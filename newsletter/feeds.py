@@ -85,6 +85,21 @@ def _tavily_search(
     return results
 
 
+def _dedup_urls(result_groups: list[list[dict]]) -> list[list[dict]]:
+    """Remove duplicate URLs across multiple result groups, keeping first occurrence."""
+    seen = set()
+    out = []
+    for group in result_groups:
+        fresh = []
+        for r in group:
+            url = (r.get("url") or "").split("?")[0].rstrip("/")
+            if url and url not in seen:
+                seen.add(url)
+                fresh.append(r)
+        out.append(fresh)
+    return out
+
+
 def _filter_recent(results: list[dict], days: int = 2) -> list[dict]:
     """Drop results whose published_date is older than `days` days."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
@@ -261,14 +276,16 @@ _NEWS_INSTRUCTION_TEMPLATE = (
     "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
     "Today is {today}. "
     "From the search results below, select the 4 best stories for each section. "
-    "IMPORTANT: only use stories published within the last 2 days — each result shows its date in brackets. "
-    "Reject any story dated earlier than {cutoff}. "
-    "Write a warm 2-3 sentence blurb for the first story in each section.\n"
-    "For the New York section: pick a MIX of stories — at most 1 sports story, "
-    "the rest should be community, culture, neighborhood, or local news. "
-    "Pick specific stories about Brooklyn and Manhattan life — community moments, local culture, "
-    "neighborhood happenings in places like Bed-Stuy and Bushwick. "
-    "Do NOT pick generic events calendars, tourist guides, or 'things to do' roundups.\n"
+    "IMPORTANT — follow all of these rules:\n"
+    "1. RECENCY: only use stories published within the last 2 days (dates shown in brackets). "
+    "Reject any story dated earlier than {cutoff}.\n"
+    "2. NO DUPLICATES: each story or event may appear in only one section. "
+    "If the same underlying event is covered by multiple outlets, pick the single best source "
+    "and ignore the rest — do not include reactions, follow-ups, or different angles on the same event "
+    "across sections.\n"
+    "3. NEW YORK: pick a mix — at most 1 sports story, the rest community, culture, or neighborhood news "
+    "from Brooklyn or Manhattan (Bed-Stuy, Bushwick, etc.). No events calendars or tourist guides.\n"
+    "Write a warm 2-3 sentence blurb for the first story in each section. "
     "Respond ONLY with valid JSON — no other text, no markdown:\n"
     '{"good_news":['
     '{"headline":"...","blurb":"...","link":"https://..."},'
@@ -326,6 +343,11 @@ def fetch_news() -> tuple[dict, dict, dict]:
             topic="news",
             include_domains=_NYC_DOMAINS,
         ))
+
+        # Remove exact URL duplicates across sections before sending to Haiku
+        good_results, ai_results, ny_results = _dedup_urls(
+            [good_results, ai_results, ny_results]
+        )
 
         instruction = (
             _NEWS_INSTRUCTION_TEMPLATE
