@@ -24,7 +24,7 @@ def fetch_quote() -> dict:
     """Returns {quote, author} from the ZenQuotes free API."""
     try:
         resp = requests.get(
-            "https://zenquotes.io/api/today", headers=_HEADERS, timeout=10
+            "https://zenquotes.io/api/random", headers=_HEADERS, timeout=10
         )
         resp.raise_for_status()
         data = resp.json()[0]
