@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+from datetime import date
 
 import anthropic
 import requests
@@ -57,11 +58,12 @@ def _og_image(url: str) -> str:
 def _search(prompt: str, system: str) -> str:
     """Run Claude with web search and return the final text response."""
     messages = [{"role": "user", "content": prompt}]
+    text = ""
 
     for i in range(8):
         resp = _client().messages.create(
             model=_MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
             system=system,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=messages,
@@ -70,20 +72,27 @@ def _search(prompt: str, system: str) -> str:
         block_types = [getattr(b, "type", "?") for b in resp.content]
         logger.info("Round %d | stop_reason=%s | blocks=%s", i + 1, resp.stop_reason, block_types)
 
-        # Collect any text from this response
+        for j, b in enumerate(resp.content):
+            btype = getattr(b, "type", "?")
+            if btype == "text":
+                btext = getattr(b, "text", "") or ""
+                logger.info("  [%d] text (%d chars): %s", j, len(btext), btext[:200])
+            elif btype == "tool_use":
+                logger.info("  [%d] tool_use id=%s input=%s", j, getattr(b, "id", "?"), str(getattr(b, "input", {}))[:150])
+            else:
+                logger.info("  [%d] %s: %s", j, btype, str(b)[:200])
+
         text = "".join(
             getattr(b, "text", "") or ""
             for b in resp.content
             if getattr(b, "type", "") == "text"
         )
-        if text:
-            logger.info("Got text response: %s...", text[:120])
 
         if resp.stop_reason == "end_turn":
             if text:
                 return text
-            # end_turn but no text — Claude searched but didn't write a response.
-            # Continue the conversation and ask it to synthesize.
+            # end_turn but no text — Claude searched but didn't synthesize.
+            logger.warning("Round %d: end_turn with no text, requesting synthesis", i + 1)
             messages.append({"role": "assistant", "content": resp.content})
             messages.append({
                 "role": "user",
@@ -93,10 +102,10 @@ def _search(prompt: str, system: str) -> str:
 
         if resp.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": resp.content})
-            # Provide tool results — for server-side tools the server fills these in,
-            # but we still need to send the tool_result turn to continue the loop.
+            # For server-side web_search tool, search already ran; acknowledge each
+            # tool_use so Claude can proceed to synthesize.
             tool_results = [
-                {"type": "tool_result", "tool_use_id": b.id, "content": ""}
+                {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
                 for b in resp.content
                 if getattr(b, "type", "") == "tool_use"
             ]
@@ -104,7 +113,6 @@ def _search(prompt: str, system: str) -> str:
                 messages.append({"role": "user", "content": tool_results})
             continue
 
-        # Any other stop reason — return whatever text we have
         break
 
     return text
@@ -152,8 +160,10 @@ _FALLBACK_GOOD_NEWS = {
 
 
 def fetch_good_news() -> dict:
+    today = date.today().strftime("%B %d, %Y")
     prompt = (
-        "Search for 4 real, uplifting positive news stories published in the last 48 hours. "
+        f"Today is {today}. Search the web for 4 real, uplifting positive news stories "
+        "published in the last 48 hours. "
         "Look for: acts of human kindness, scientific breakthroughs, environmental wins, "
         "community achievements. Avoid politics and tragedy. "
         "For the first story write a warm, engaging 2-3 sentence blurb. "
@@ -209,8 +219,10 @@ _FALLBACK_AI = {
 
 
 def fetch_ai_impact() -> dict:
+    today = date.today().strftime("%B %d, %Y")
     prompt = (
-        "Search for 4 real stories published recently about AI being used for genuine positive impact. "
+        f"Today is {today}. Search the web for 4 real stories published in the last 7 days "
+        "about AI being used for genuine positive impact. "
         "Look for: AI detecting disease, fighting climate change, helping people with disabilities, "
         "accelerating drug discovery, supporting humanitarian work. Real results only, no hype. "
         "For the first story write an accessible, optimistic 2-3 sentence blurb. "
