@@ -178,6 +178,8 @@ _NYC_DOMAINS = [
     "gothamist.com",        # NYC local news & culture
     "brooklynpaper.com",    # Brooklyn hyperlocal stories
     "bklyner.com",          # Bed-Stuy, Crown Heights, neighborhood news
+    "timeout.com",          # NYC news section (parks, skate, local decisions)
+    "hyperallergic.com",    # NYC arts, culture, street art
     "amny.com",             # AM New York local news
     "ny1.com",              # NY1 local news
     "nydailynews.com",      # NY Daily News
@@ -284,10 +286,10 @@ def fetch_news() -> tuple[dict, dict, dict]:
         )
 
         ny_results = _tavily_search(
-            "Brooklyn Bed-Stuy Bushwick community story neighborhood culture skateboarding "
-            "Mets Yankees Knicks Nets win local",
+            "Brooklyn Manhattan community news skate park street art culture Knicks Mets "
+            "Bed-Stuy Bushwick neighborhood local story",
             max_results=10,
-            days=7,
+            days=14,
             include_domains=_NYC_DOMAINS,
         )
 
