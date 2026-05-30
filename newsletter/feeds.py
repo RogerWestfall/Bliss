@@ -34,12 +34,14 @@ def _extract_json(text: str) -> dict:
 
 
 def _search(prompt: str, system: str) -> str:
-    """Run a Claude prompt with web search, handling the tool-use loop."""
+    """Run Claude with web search, then force a structured text response."""
     messages = [{"role": "user", "content": prompt}]
-    for _ in range(8):
+
+    # Phase 1 — let Claude search (may loop if it searches multiple times)
+    for _ in range(6):
         resp = _client().messages.create(
             model=_MODEL,
-            max_tokens=1024,
+            max_tokens=2048,
             system=system,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=messages,
@@ -47,17 +49,34 @@ def _search(prompt: str, system: str) -> str:
         text = next(
             (b.text for b in resp.content if getattr(b, "type", "") == "text"), ""
         )
-        if resp.stop_reason != "tool_use":
-            return text
+        if text.strip() and resp.stop_reason != "tool_use":
+            return text  # Claude searched and responded in one shot
+
         messages.append({"role": "assistant", "content": resp.content})
-        tool_results = [
-            {"type": "tool_result", "tool_use_id": b.id, "content": ""}
-            for b in resp.content
-            if getattr(b, "type", "") == "tool_use"
-        ]
-        if tool_results:
+
+        if resp.stop_reason == "tool_use":
+            tool_results = [
+                {"type": "tool_result", "tool_use_id": b.id, "content": ""}
+                for b in resp.content if getattr(b, "type", "") == "tool_use"
+            ]
             messages.append({"role": "user", "content": tool_results})
-    return text
+        else:
+            break  # Search done but no text yet — move to phase 2
+
+    # Phase 2 — explicitly ask Claude to write the JSON response
+    messages.append({
+        "role": "user",
+        "content": "Based on your research, now provide the JSON response as instructed.",
+    })
+    final = _client().messages.create(
+        model=_MODEL,
+        max_tokens=1024,
+        system=system,
+        messages=messages,
+    )
+    return next(
+        (b.text for b in final.content if getattr(b, "type", "") == "text"), ""
+    )
 
 
 def _og_image(url: str) -> str:
