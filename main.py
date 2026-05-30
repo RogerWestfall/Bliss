@@ -13,20 +13,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main(preview: bool = False, output: str | None = None) -> None:
-    from newsletter.content import fetch_quote, fetch_good_news, fetch_ai_impact
+def main(preview: bool = False, output: str | None = None, mock: bool = False) -> None:
     from newsletter.renderer import render
     from newsletter.sender import send
 
-    logger.info("Fetching content...")
-    quote = fetch_quote()
-    logger.info("Quote: %s — %s", quote["quote"][:60], quote["author"])
-
-    good_news = fetch_good_news()
-    logger.info("Good News: %s", good_news["headline"])
-
-    ai_impact = fetch_ai_impact()
-    logger.info("AI Impact: %s", ai_impact["headline"])
+    if mock:
+        from newsletter.mock import QUOTE, GOOD_NEWS, AI_IMPACT
+        quote, good_news, ai_impact = QUOTE, GOOD_NEWS, AI_IMPACT
+        logger.info("Mock mode — using sample content")
+    else:
+        from newsletter.content import fetch_quote, fetch_good_news, fetch_ai_impact
+        logger.info("Fetching content...")
+        quote = fetch_quote()
+        logger.info("Quote: %s — %s", quote["quote"][:60], quote["author"])
+        good_news = fetch_good_news()
+        logger.info("Good News: %s", good_news["headline"])
+        ai_impact = fetch_ai_impact()
+        logger.info("AI Impact: %s", ai_impact["headline"])
 
     logger.info("Rendering newsletter...")
     html = render(quote, good_news, ai_impact)
@@ -56,9 +59,14 @@ if __name__ == "__main__":
         metavar="FILE",
         help="Save the rendered HTML to a file (useful with --preview).",
     )
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use sample content instead of live APIs (no API key needed).",
+    )
     args = parser.parse_args()
     try:
-        main(preview=args.preview, output=args.output)
+        main(preview=args.preview, output=args.output, mock=args.mock)
     except Exception as exc:
         logger.error("Fatal error: %s", exc, exc_info=True)
         sys.exit(1)

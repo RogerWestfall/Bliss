@@ -26,16 +26,24 @@ def _claude():
 # Quote of the Day
 # ---------------------------------------------------------------------------
 
+_QUOTE_APIS = [
+    ("https://zenquotes.io/api/today", lambda d: {"quote": d[0]["q"], "author": d[0]["a"]}),
+    ("https://api.quotable.io/random?tags=inspirational,wisdom", lambda d: {"quote": d["content"], "author": d["author"]}),
+]
+
+
 def fetch_quote() -> dict:
-    """Returns {quote, author} from ZenQuotes API, with Claude fallback."""
-    try:
-        resp = requests.get("https://zenquotes.io/api/today", timeout=10)
-        resp.raise_for_status()
-        data = resp.json()[0]
-        return {"quote": data["q"], "author": data["a"]}
-    except Exception as exc:
-        logger.warning("ZenQuotes failed (%s); falling back to Claude", exc)
-        return _claude_quote()
+    """Returns {quote, author}, trying multiple APIs then falling back to Claude."""
+    headers = {"User-Agent": "BlissNewsletter/1.0 (daily positive newsletter)"}
+    for url, extractor in _QUOTE_APIS:
+        try:
+            resp = requests.get(url, timeout=10, headers=headers)
+            resp.raise_for_status()
+            return extractor(resp.json())
+        except Exception as exc:
+            logger.warning("Quote API %s failed: %s", url, exc)
+    logger.info("All quote APIs failed; using Claude")
+    return _claude_quote()
 
 
 def _claude_quote() -> dict:
