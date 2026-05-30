@@ -14,7 +14,7 @@ from newsletter.config import ANTHROPIC_API_KEY
 logger = logging.getLogger(__name__)
 
 _HEADERS = {"User-Agent": "BlissNewsletter/2.0 (rogerlwestfall@gmail.com)"}
-_MODEL = "claude-opus-4-8"
+_MODEL = "claude-sonnet-4-6"
 _client_instance = None
 
 
@@ -63,7 +63,7 @@ def _search(prompt: str, system: str) -> str:
     for i in range(8):
         resp = _client().messages.create(
             model=_MODEL,
-            max_tokens=4096,
+            max_tokens=2048,
             system=system,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=messages,
@@ -91,7 +91,6 @@ def _search(prompt: str, system: str) -> str:
         if resp.stop_reason == "end_turn":
             if text:
                 return text
-            # end_turn but no text — Claude searched but didn't synthesize.
             logger.warning("Round %d: end_turn with no text, requesting synthesis", i + 1)
             messages.append({"role": "assistant", "content": resp.content})
             messages.append({
@@ -102,8 +101,6 @@ def _search(prompt: str, system: str) -> str:
 
         if resp.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": resp.content})
-            # For server-side web_search tool, search already ran; acknowledge each
-            # tool_use so Claude can proceed to synthesize.
             tool_results = [
                 {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
                 for b in resp.content
@@ -116,6 +113,23 @@ def _search(prompt: str, system: str) -> str:
         break
 
     return text
+
+
+def _shape_stories(stories: list) -> dict:
+    """Convert a list of story dicts into the newsletter section format."""
+    if not stories:
+        return None
+    main = stories[0]
+    return {
+        "headline": main.get("headline", ""),
+        "blurb": main.get("blurb", ""),
+        "link": main.get("link", ""),
+        "image": _og_image(main.get("link", "")),
+        "more": [
+            {"headline": s.get("headline", ""), "link": s.get("link", "")}
+            for s in stories[1:]
+        ],
+    }
 
 
 # ── Quote of the Day ─────────────────────────────────────────────────────────
@@ -139,11 +153,11 @@ def fetch_quote() -> dict:
         return _FALLBACK_QUOTE
 
 
-# ── Good News ─────────────────────────────────────────────────────────────────
+# ── News (good news + AI impact in one search call) ───────────────────────────
 
-_GOOD_NEWS_SYSTEM = (
+_NEWS_SYSTEM = (
     "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
-    "Find real, current, uplifting news stories. Write in a warm, engaging tone. "
+    "Find real, current stories via web search. Write in a warm, engaging tone. "
     "Respond ONLY with valid JSON — no other text, no markdown."
 )
 
@@ -158,54 +172,6 @@ _FALLBACK_GOOD_NEWS = {
     "more": [],
 }
 
-
-def fetch_good_news() -> dict:
-    today = date.today().strftime("%B %d, %Y")
-    prompt = (
-        f"Today is {today}. Search the web for 4 real, uplifting positive news stories "
-        "published in the last 48 hours. "
-        "Look for: acts of human kindness, scientific breakthroughs, environmental wins, "
-        "community achievements. Avoid politics and tragedy. "
-        "For the first story write a warm, engaging 2-3 sentence blurb. "
-        "Reply ONLY with this JSON:\n"
-        '{"stories": ['
-        '{"headline": "...", "blurb": "...", "link": "https://..."}, '
-        '{"headline": "...", "link": "https://..."}, '
-        '{"headline": "...", "link": "https://..."}, '
-        '{"headline": "...", "link": "https://..."}'
-        "]}"
-    )
-    try:
-        text = _search(prompt, _GOOD_NEWS_SYSTEM)
-        stories = _extract_json(text).get("stories", [])
-        if not stories:
-            return _FALLBACK_GOOD_NEWS
-        main = stories[0]
-        return {
-            "headline": main.get("headline", ""),
-            "blurb": main.get("blurb", ""),
-            "link": main.get("link", ""),
-            "image": _og_image(main.get("link", "")),
-            "more": [
-                {"headline": s.get("headline", ""), "link": s.get("link", "")}
-                for s in stories[1:]
-            ],
-        }
-    except Exception as exc:
-        logger.warning("fetch_good_news failed: %s", exc)
-        return _FALLBACK_GOOD_NEWS
-
-
-# ── Impactful AI ──────────────────────────────────────────────────────────────
-
-_AI_SYSTEM = (
-    "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
-    "Find real stories of AI creating genuine positive impact in the world. "
-    "Focus on healthcare, climate, accessibility, education, or humanitarian aid. "
-    "Avoid hype — real demonstrated impact only. "
-    "Respond ONLY with valid JSON — no other text, no markdown."
-)
-
 _FALLBACK_AI = {
     "headline": "AI Is Accelerating Breakthroughs Across Science and Medicine",
     "blurb": (
@@ -218,38 +184,36 @@ _FALLBACK_AI = {
 }
 
 
-def fetch_ai_impact() -> dict:
+def fetch_news() -> tuple[dict, dict]:
+    """Return (good_news, ai_impact) using a single web search call."""
     today = date.today().strftime("%B %d, %Y")
     prompt = (
-        f"Today is {today}. Search the web for 4 real stories published in the last 7 days "
-        "about AI being used for genuine positive impact. "
-        "Look for: AI detecting disease, fighting climate change, helping people with disabilities, "
-        "accelerating drug discovery, supporting humanitarian work. Real results only, no hype. "
-        "For the first story write an accessible, optimistic 2-3 sentence blurb. "
+        f"Today is {today}. Search the web and find two sets of stories:\n\n"
+        "1. GOOD NEWS — 4 uplifting stories published in the last 48 hours: "
+        "acts of kindness, scientific breakthroughs, environmental wins, community achievements. "
+        "No politics or tragedy. Write a warm 2-3 sentence blurb for story #1.\n\n"
+        "2. AI IMPACT — 4 stories from the last 7 days about AI creating genuine positive impact: "
+        "healthcare, climate, accessibility, education, humanitarian aid. Real results only, no hype. "
+        "Write an optimistic 2-3 sentence blurb for story #1.\n\n"
         "Reply ONLY with this JSON:\n"
-        '{"stories": ['
-        '{"headline": "...", "blurb": "...", "link": "https://..."}, '
-        '{"headline": "...", "link": "https://..."}, '
-        '{"headline": "...", "link": "https://..."}, '
-        '{"headline": "...", "link": "https://..."}'
+        '{"good_news":['
+        '{"headline":"...","blurb":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."}'
+        '],"ai_impact":['
+        '{"headline":"...","blurb":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."}'
         "]}"
     )
     try:
-        text = _search(prompt, _AI_SYSTEM)
-        stories = _extract_json(text).get("stories", [])
-        if not stories:
-            return _FALLBACK_AI
-        main = stories[0]
-        return {
-            "headline": main.get("headline", ""),
-            "blurb": main.get("blurb", ""),
-            "link": main.get("link", ""),
-            "image": _og_image(main.get("link", "")),
-            "more": [
-                {"headline": s.get("headline", ""), "link": s.get("link", "")}
-                for s in stories[1:]
-            ],
-        }
+        text = _search(prompt, _NEWS_SYSTEM)
+        data = _extract_json(text)
+        good_news = _shape_stories(data.get("good_news", [])) or _FALLBACK_GOOD_NEWS
+        ai_impact = _shape_stories(data.get("ai_impact", [])) or _FALLBACK_AI
+        return good_news, ai_impact
     except Exception as exc:
-        logger.warning("fetch_ai_impact failed: %s", exc)
-        return _FALLBACK_AI
+        logger.warning("fetch_news failed: %s", exc)
+        return _FALLBACK_GOOD_NEWS, _FALLBACK_AI

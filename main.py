@@ -61,13 +61,12 @@ def main(preview: bool = False, output: str | None = None, mock: bool = False, e
         quote, good_news, ai_impact = _MOCK["quote"], _MOCK["good_news"], _MOCK["ai_impact"]
         logger.info("Mock mode — using sample content")
     else:
-        from newsletter.feeds import fetch_quote, fetch_good_news, fetch_ai_impact
+        from newsletter.feeds import fetch_quote, fetch_news
         logger.info("Fetching content...")
         quote = fetch_quote()
         logger.info('Quote: "%s" — %s', quote["quote"][:55], quote["author"])
-        good_news = fetch_good_news()
+        good_news, ai_impact = fetch_news()
         logger.info("Good News: %s", good_news["headline"])
-        ai_impact = fetch_ai_impact()
         logger.info("Impactful AI: %s", ai_impact["headline"])
 
     html = render(quote, good_news, ai_impact)
