@@ -5,40 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bliss — {{ date }}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#ede9fe;
+<body style="margin:0;padding:0;background-color:#f7f4e6;
              font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
 
   <!-- Hidden preheader shows in inbox preview -->
-  <div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#ede9fe;">
+  <div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#f7f4e6;">
     ✨ Your daily dose of positivity — {{ date }}
     &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
   </div>
 
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-         style="background-color:#ede9fe;">
+         style="background-color:#f7f4e6;">
     <tr>
       <td align="center" style="padding:32px 16px 48px;">
 
         <!-- ═══ CARD ═══ -->
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0"
                style="max-width:600px;width:100%;background-color:#ffffff;
-                      border-radius:24px;overflow:hidden;
-                      box-shadow:0 8px 48px rgba(91,33,182,0.14);">
+                      border-radius:20px;overflow:hidden;
+                      box-shadow:0 8px 40px rgba(31,30,29,0.12);">
 
           <!-- ── HEADER ── -->
           <tr>
-            <td style="background:linear-gradient(140deg,#3730a3 0%,#6d28d9 55%,#9333ea 100%);
-                       padding:52px 40px 44px;text-align:center;">
+            <td style="background-color:#1f1e1d;padding:52px 40px 44px;text-align:center;">
               <p style="margin:0;font-size:10px;letter-spacing:5px;text-transform:uppercase;
-                        color:rgba(255,255,255,0.55);font-weight:700;">
+                        color:#7d7979;font-weight:700;">
                 Daily Newsletter
               </p>
-              <h1 style="margin:10px 0 0;font-size:52px;font-weight:800;color:#ffffff;
+              <h1 style="margin:12px 0 0;font-size:52px;font-weight:800;color:#f7f4e6;
                           letter-spacing:-2px;line-height:1.05;">
                 ✨ Bliss
               </h1>
-              <p style="margin:14px 0 0;font-size:14px;color:rgba(255,255,255,0.75);
-                        font-weight:500;letter-spacing:0.3px;">
+              <p style="margin:14px 0 0;font-size:14px;color:#7d7979;
+                        font-weight:500;letter-spacing:0.5px;">
                 {{ date }}
               </p>
             </td>
@@ -47,7 +46,7 @@
           <!-- ── INTRO ── -->
           <tr>
             <td style="padding:36px 48px 28px;text-align:center;">
-              <p style="margin:0;font-size:16px;line-height:1.75;color:#6b7280;font-weight:400;">
+              <p style="margin:0;font-size:16px;line-height:1.75;color:#7d7979;font-weight:400;">
                 Good things are happening every day.<br />
                 Here's your curated dose of positivity, progress, and possibility.
               </p>
@@ -58,7 +57,7 @@
           <tr>
             <td style="padding:0 40px 4px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                <tr><td style="height:1px;background:#f3f4f6;font-size:0;line-height:0;">&nbsp;</td></tr>
+                <tr><td style="height:1px;background-color:#f7f4e6;font-size:0;line-height:0;">&nbsp;</td></tr>
               </table>
             </td>
           </tr>
@@ -70,20 +69,19 @@
             <td style="padding:36px 40px 32px;">
 
               <p style="margin:0 0 22px;font-size:10px;font-weight:700;letter-spacing:3.5px;
-                        text-transform:uppercase;color:#7c3aed;">
+                        text-transform:uppercase;color:#8e5492;">
                 💬 &nbsp;Quote of the Day
               </p>
 
-              <!-- Quote card -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="background:#faf5ff;border-left:5px solid #7c3aed;
-                             border-radius:0 16px 16px 0;padding:28px 32px 28px 28px;">
-                    <p style="margin:0 0 20px;font-size:20px;line-height:1.6;color:#1f2937;
+                  <td style="background-color:#f7f4e6;border-left:5px solid #8e5492;
+                             border-radius:0 12px 12px 0;padding:28px 32px 28px 28px;">
+                    <p style="margin:0 0 20px;font-size:20px;line-height:1.6;color:#1f1e1d;
                                font-style:italic;font-weight:400;">
                       &ldquo;{{ quote.quote }}&rdquo;
                     </p>
-                    <p style="margin:0;font-size:12px;font-weight:700;color:#7c3aed;
+                    <p style="margin:0;font-size:12px;font-weight:700;color:#8e5492;
                                letter-spacing:1.5px;text-transform:uppercase;">
                       — {{ quote.author }}
                     </p>
@@ -98,7 +96,7 @@
           <tr>
             <td style="padding:0 40px 4px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                <tr><td style="height:1px;background:#f3f4f6;font-size:0;line-height:0;">&nbsp;</td></tr>
+                <tr><td style="height:1px;background-color:#f7f4e6;font-size:0;line-height:0;">&nbsp;</td></tr>
               </table>
             </td>
           </tr>
@@ -110,36 +108,36 @@
             <td style="padding:36px 40px 32px;">
 
               <p style="margin:0 0 22px;font-size:10px;font-weight:700;letter-spacing:3.5px;
-                        text-transform:uppercase;color:#059669;">
+                        text-transform:uppercase;color:#7c658a;">
                 🌍 &nbsp;Good News
               </p>
 
               {% if good_news.image %}
-              <div style="margin-bottom:22px;border-radius:14px;overflow:hidden;line-height:0;">
+              <div style="margin-bottom:22px;border-radius:12px;overflow:hidden;line-height:0;">
                 <img src="{{ good_news.image }}"
                      alt="{{ good_news.headline }}"
                      width="520"
-                     style="width:100%;max-width:520px;height:auto;display:block;border-radius:14px;" />
+                     style="width:100%;max-width:520px;height:auto;display:block;border-radius:12px;" />
               </div>
               {% endif %}
 
               <h2 style="margin:0 0 14px;font-size:22px;font-weight:700;line-height:1.35;
-                          color:#111827;letter-spacing:-0.3px;">
+                          color:#1f1e1d;letter-spacing:-0.3px;">
                 {{ good_news.headline }}
               </h2>
 
-              <p style="margin:0 0 26px;font-size:16px;line-height:1.8;color:#4b5563;">
+              <p style="margin:0 0 26px;font-size:16px;line-height:1.8;color:#7d7979;">
                 {{ good_news.blurb }}
               </p>
 
               {% if good_news.link %}
               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="border-radius:10px;background-color:#059669;">
+                  <td style="border-radius:8px;background-color:#7c658a;">
                     <a href="{{ good_news.link }}"
-                       style="display:inline-block;padding:13px 30px;color:#ffffff;
+                       style="display:inline-block;padding:13px 30px;color:#f7f4e6;
                               text-decoration:none;font-size:14px;font-weight:600;
-                              letter-spacing:0.2px;border-radius:10px;">
+                              letter-spacing:0.3px;border-radius:8px;">
                       Read the full story &rarr;
                     </a>
                   </td>
@@ -154,7 +152,7 @@
           <tr>
             <td style="padding:0 40px 4px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                <tr><td style="height:1px;background:#f3f4f6;font-size:0;line-height:0;">&nbsp;</td></tr>
+                <tr><td style="height:1px;background-color:#f7f4e6;font-size:0;line-height:0;">&nbsp;</td></tr>
               </table>
             </td>
           </tr>
@@ -166,36 +164,36 @@
             <td style="padding:36px 40px 48px;">
 
               <p style="margin:0 0 22px;font-size:10px;font-weight:700;letter-spacing:3.5px;
-                        text-transform:uppercase;color:#2563eb;">
+                        text-transform:uppercase;color:#7d7979;">
                 🤖 &nbsp;Impactful AI
               </p>
 
               {% if ai_impact.image %}
-              <div style="margin-bottom:22px;border-radius:14px;overflow:hidden;line-height:0;">
+              <div style="margin-bottom:22px;border-radius:12px;overflow:hidden;line-height:0;">
                 <img src="{{ ai_impact.image }}"
                      alt="{{ ai_impact.headline }}"
                      width="520"
-                     style="width:100%;max-width:520px;height:auto;display:block;border-radius:14px;" />
+                     style="width:100%;max-width:520px;height:auto;display:block;border-radius:12px;" />
               </div>
               {% endif %}
 
               <h2 style="margin:0 0 14px;font-size:22px;font-weight:700;line-height:1.35;
-                          color:#111827;letter-spacing:-0.3px;">
+                          color:#1f1e1d;letter-spacing:-0.3px;">
                 {{ ai_impact.headline }}
               </h2>
 
-              <p style="margin:0 0 26px;font-size:16px;line-height:1.8;color:#4b5563;">
+              <p style="margin:0 0 26px;font-size:16px;line-height:1.8;color:#7d7979;">
                 {{ ai_impact.blurb }}
               </p>
 
               {% if ai_impact.link %}
               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="border-radius:10px;background-color:#2563eb;">
+                  <td style="border-radius:8px;background-color:#7d7979;">
                     <a href="{{ ai_impact.link }}"
-                       style="display:inline-block;padding:13px 30px;color:#ffffff;
+                       style="display:inline-block;padding:13px 30px;color:#f7f4e6;
                               text-decoration:none;font-size:14px;font-weight:600;
-                              letter-spacing:0.2px;border-radius:10px;">
+                              letter-spacing:0.3px;border-radius:8px;">
                       Read the full story &rarr;
                     </a>
                   </td>
@@ -208,22 +206,21 @@
 
           <!-- ── FOOTER ── -->
           <tr>
-            <td style="background-color:#f9fafb;border-top:1px solid #f3f4f6;
-                       padding:32px 40px;text-align:center;border-radius:0 0 24px 24px;">
-              <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#374151;">
+            <td style="background-color:#1f1e1d;padding:32px 40px;
+                       text-align:center;border-radius:0 0 20px 20px;">
+              <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#f7f4e6;">
                 ✨ Bliss
               </p>
-              <p style="margin:0 0 18px;font-size:13px;color:#9ca3af;line-height:1.6;">
+              <p style="margin:0 0 18px;font-size:13px;color:#7d7979;line-height:1.6;">
                 Curating positivity, one day at a time.
               </p>
-              <p style="margin:0;font-size:12px;color:#d1d5db;">
-                You're receiving this because you subscribed to Bliss Daily.
+              <p style="margin:0;font-size:12px;color:#7d7979;">
+                You're receiving this because you subscribed to Bliss.
               </p>
             </td>
           </tr>
 
         </table>
-        <!-- End card -->
 
       </td>
     </tr>
