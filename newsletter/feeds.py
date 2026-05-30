@@ -1,4 +1,4 @@
-"""Fetch newsletter content: RSS for fresh articles, Claude for curation and writing."""
+"""Fetch newsletter content using Claude web search."""
 
 import json
 import logging
@@ -6,7 +6,6 @@ import re
 
 import anthropic
 import requests
-from lxml import etree
 from lxml import html as lhtml
 
 from newsletter.config import ANTHROPIC_API_KEY
@@ -34,56 +33,6 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-# ── Quote of the Day ─────────────────────────────────────────────────────────
-
-_FALLBACK_QUOTE = {
-    "quote": "Keep your face always toward the sunshine, and shadows will fall behind you.",
-    "author": "Walt Whitman",
-}
-
-
-def fetch_quote() -> dict:
-    try:
-        resp = requests.get(
-            "https://zenquotes.io/api/random", headers=_HEADERS, timeout=10
-        )
-        resp.raise_for_status()
-        data = resp.json()[0]
-        return {"quote": data["q"], "author": data["a"]}
-    except Exception as exc:
-        logger.warning("ZenQuotes failed (%s) — using fallback", exc)
-        return _FALLBACK_QUOTE
-
-
-# ── RSS helpers ───────────────────────────────────────────────────────────────
-
-def _clean_html(raw: str, max_chars: int = 400) -> str:
-    if not raw:
-        return ""
-    try:
-        text = lhtml.fromstring(raw).text_content()
-    except Exception:
-        text = re.sub(r"<[^>]+>", " ", raw)
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) > max_chars:
-        text = text[:max_chars].rsplit(" ", 1)[0] + "…"
-    return text
-
-
-def _img_from_html(raw: str) -> str:
-    if not raw:
-        return ""
-    try:
-        root = lhtml.fromstring(raw)
-        for img in root.iter("img"):
-            src = img.get("src", "")
-            if src.startswith("http"):
-                return src
-    except Exception:
-        pass
-    return ""
-
-
 def _og_image(url: str) -> str:
     if not url:
         return ""
@@ -105,144 +54,89 @@ def _og_image(url: str) -> str:
     return ""
 
 
-def _parse_feed(url: str) -> list[dict]:
-    try:
-        resp = requests.get(url, headers=_HEADERS, timeout=15)
-        resp.raise_for_status()
-        root = etree.fromstring(resp.content)
-    except Exception as exc:
-        logger.warning("Feed %s failed: %s", url, exc)
-        return []
+def _search(prompt: str, system: str) -> str:
+    """Run Claude with web search and return the final text response."""
+    messages = [{"role": "user", "content": prompt}]
 
-    items = root.findall(".//item")
-    if not items:
-        items = root.findall(".//{http://www.w3.org/2005/Atom}entry")
+    for i in range(8):
+        resp = _client().messages.create(
+            model=_MODEL,
+            max_tokens=2048,
+            system=system,
+            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            messages=messages,
+        )
 
-    entries = []
-    for item in items[:20]:
-        title_el = item.find("title") or item.find("{http://www.w3.org/2005/Atom}title")
-        title = (title_el.text or "").strip() if title_el is not None else ""
-        if not title:
+        block_types = [getattr(b, "type", "?") for b in resp.content]
+        logger.info("Round %d | stop_reason=%s | blocks=%s", i + 1, resp.stop_reason, block_types)
+
+        # Collect any text from this response
+        text = "".join(
+            getattr(b, "text", "") or ""
+            for b in resp.content
+            if getattr(b, "type", "") == "text"
+        )
+        if text:
+            logger.info("Got text response: %s...", text[:120])
+
+        if resp.stop_reason == "end_turn":
+            if text:
+                return text
+            # end_turn but no text — Claude searched but didn't write a response.
+            # Continue the conversation and ask it to synthesize.
+            messages.append({"role": "assistant", "content": resp.content})
+            messages.append({
+                "role": "user",
+                "content": "Now write the JSON response based on your search results.",
+            })
             continue
 
-        link_el = item.find("link")
-        if link_el is not None:
-            link = (link_el.text or link_el.get("href", "")).strip()
-        else:
-            atom_link = item.find("{http://www.w3.org/2005/Atom}link")
-            link = atom_link.get("href", "").strip() if atom_link is not None else ""
+        if resp.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": resp.content})
+            # Provide tool results — for server-side tools the server fills these in,
+            # but we still need to send the tool_result turn to continue the loop.
+            tool_results = [
+                {"type": "tool_result", "tool_use_id": b.id, "content": ""}
+                for b in resp.content
+                if getattr(b, "type", "") == "tool_use"
+            ]
+            if tool_results:
+                messages.append({"role": "user", "content": tool_results})
+            continue
 
-        summary = ""
-        for tag in (
-            "description",
-            "{http://www.w3.org/2005/Atom}summary",
-            "{http://www.w3.org/2005/Atom}content",
-            "{http://purl.org/rss/1.0/modules/content/}encoded",
-        ):
-            el = item.find(tag)
-            if el is not None and el.text:
-                summary = el.text
-                break
+        # Any other stop reason — return whatever text we have
+        break
 
-        image = ""
-        mt = item.find("{http://search.yahoo.com/mrss/}thumbnail")
-        if mt is not None:
-            image = mt.get("url", "")
-        if not image:
-            mc = item.find("{http://search.yahoo.com/mrss/}content")
-            if mc is not None and mc.get("url", ""):
-                image = mc.get("url", "")
-        if not image:
-            image = _img_from_html(summary)
-
-        entries.append({
-            "headline": title,
-            "blurb": _clean_html(summary),
-            "link": link,
-            "image": image,
-        })
-    return entries
+    return text
 
 
-def _fetch_all(feeds: list[str]) -> list[dict]:
-    """Collect entries from all feeds, deduplicating by link."""
-    seen, results = set(), []
-    for url in feeds:
-        for entry in _parse_feed(url):
-            if entry["link"] not in seen:
-                seen.add(entry["link"])
-                results.append(entry)
-    return results
+# ── Quote of the Day ─────────────────────────────────────────────────────────
+
+_FALLBACK_QUOTE = {
+    "quote": "Keep your face always toward the sunshine, and shadows will fall behind you.",
+    "author": "Walt Whitman",
+}
 
 
-# ── Claude curation ───────────────────────────────────────────────────────────
-
-def _claude_curate(entries: list[dict], section: str, system: str) -> dict | None:
-    """Ask Claude to pick the best story and write a warm blurb."""
-    if not entries:
-        return None
-
-    candidates = json.dumps(
-        [{"i": i, "title": e["headline"], "summary": e["blurb"][:300]}
-         for i, e in enumerate(entries[:20])],
-        indent=2,
-    )
-
-    msg = _client().messages.create(
-        model=_MODEL,
-        max_tokens=800,
-        system=system,
-        messages=[{"role": "user", "content": (
-            f"Here are today's candidate {section} stories:\n{candidates}\n\n"
-            "Pick the single most uplifting, interesting story and write a warm, "
-            "engaging 2-3 sentence blurb. Also pick the 3 next-best stories for "
-            "additional links (different from the main pick). "
-            "Reply ONLY with valid JSON:\n"
-            '{"index": 0, "headline": "rewritten headline if needed", '
-            '"blurb": "...", "more_indices": [1, 2, 3]}'
-        )}],
-    )
-
-    text = next(
-        (b.text for b in msg.content if getattr(b, "type", "") == "text"), ""
-    )
-    data = _extract_json(text)
-
-    idx = int(data.get("index", 0))
-    if not (0 <= idx < len(entries)):
-        idx = 0
-    main = entries[idx]
-
-    more = []
-    for mi in data.get("more_indices", [])[:3]:
-        if isinstance(mi, int) and 0 <= mi < len(entries) and mi != idx:
-            more.append({"headline": entries[mi]["headline"], "link": entries[mi]["link"]})
-
-    return {
-        "headline": data.get("headline", main["headline"]),
-        "blurb": data.get("blurb", main["blurb"]),
-        "link": main["link"],
-        "image": main["image"] or _og_image(main["link"]),
-        "more": more,
-    }
+def fetch_quote() -> dict:
+    try:
+        resp = requests.get(
+            "https://zenquotes.io/api/random", headers=_HEADERS, timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()[0]
+        return {"quote": data["q"], "author": data["a"]}
+    except Exception as exc:
+        logger.warning("ZenQuotes failed (%s) — using fallback", exc)
+        return _FALLBACK_QUOTE
 
 
 # ── Good News ─────────────────────────────────────────────────────────────────
 
-_GOOD_NEWS_FEEDS = [
-    "https://www.goodnewsnetwork.org/feed/",
-    "https://www.positive.news/feed/",
-    "https://www.sunnyskyz.com/feed/rss",
-    "https://happynews.com/feed/",
-    "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
-]
-
 _GOOD_NEWS_SYSTEM = (
     "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
-    "Select the most uplifting, feel-good story — prioritise human kindness, "
-    "surprising breakthroughs, environmental wins, and community achievements. "
-    "Write in a warm, conversational tone. "
-    "Respond ONLY with valid JSON — no other text."
+    "Find real, current, uplifting news stories. Write in a warm, engaging tone. "
+    "Respond ONLY with valid JSON — no other text, no markdown."
 )
 
 _FALLBACK_GOOD_NEWS = {
@@ -258,36 +152,48 @@ _FALLBACK_GOOD_NEWS = {
 
 
 def fetch_good_news() -> dict:
-    entries = _fetch_all(_GOOD_NEWS_FEEDS)
-    if not entries:
-        logger.warning("No good news entries from feeds — using fallback")
-        return _FALLBACK_GOOD_NEWS
+    prompt = (
+        "Search for 4 real, uplifting positive news stories published in the last 48 hours. "
+        "Look for: acts of human kindness, scientific breakthroughs, environmental wins, "
+        "community achievements. Avoid politics and tragedy. "
+        "For the first story write a warm, engaging 2-3 sentence blurb. "
+        "Reply ONLY with this JSON:\n"
+        '{"stories": ['
+        '{"headline": "...", "blurb": "...", "link": "https://..."}, '
+        '{"headline": "...", "link": "https://..."}, '
+        '{"headline": "...", "link": "https://..."}, '
+        '{"headline": "...", "link": "https://..."}'
+        "]}"
+    )
     try:
-        result = _claude_curate(entries, "good news", _GOOD_NEWS_SYSTEM)
-        return result or _FALLBACK_GOOD_NEWS
+        text = _search(prompt, _GOOD_NEWS_SYSTEM)
+        stories = _extract_json(text).get("stories", [])
+        if not stories:
+            return _FALLBACK_GOOD_NEWS
+        main = stories[0]
+        return {
+            "headline": main.get("headline", ""),
+            "blurb": main.get("blurb", ""),
+            "link": main.get("link", ""),
+            "image": _og_image(main.get("link", "")),
+            "more": [
+                {"headline": s.get("headline", ""), "link": s.get("link", "")}
+                for s in stories[1:]
+            ],
+        }
     except Exception as exc:
-        logger.warning("Claude curation failed for good news: %s", exc)
+        logger.warning("fetch_good_news failed: %s", exc)
         return _FALLBACK_GOOD_NEWS
 
 
 # ── Impactful AI ──────────────────────────────────────────────────────────────
 
-_AI_FEEDS = [
-    "https://www.technologyreview.com/feed/",
-    "https://venturebeat.com/category/ai/feed/",
-    "https://feeds.feedburner.com/TechCrunch/AI",
-    "https://news.mit.edu/rss/topic/artificial-intelligence2",
-    "https://www.sciencedaily.com/rss/computers_math/artificial_intelligence.xml",
-    "https://deepmind.google/blog/rss.xml",
-]
-
 _AI_SYSTEM = (
     "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
-    "Select the story that best demonstrates AI creating genuine real-world benefit — "
-    "healthcare breakthroughs, climate solutions, accessibility tools, scientific discovery, "
-    "or humanitarian impact. Avoid hype — look for real demonstrated results. "
-    "Write in an optimistic, accessible tone. "
-    "Respond ONLY with valid JSON — no other text."
+    "Find real stories of AI creating genuine positive impact in the world. "
+    "Focus on healthcare, climate, accessibility, education, or humanitarian aid. "
+    "Avoid hype — real demonstrated impact only. "
+    "Respond ONLY with valid JSON — no other text, no markdown."
 )
 
 _FALLBACK_AI = {
@@ -303,13 +209,35 @@ _FALLBACK_AI = {
 
 
 def fetch_ai_impact() -> dict:
-    entries = _fetch_all(_AI_FEEDS)
-    if not entries:
-        logger.warning("No AI entries from feeds — using fallback")
-        return _FALLBACK_AI
+    prompt = (
+        "Search for 4 real stories published recently about AI being used for genuine positive impact. "
+        "Look for: AI detecting disease, fighting climate change, helping people with disabilities, "
+        "accelerating drug discovery, supporting humanitarian work. Real results only, no hype. "
+        "For the first story write an accessible, optimistic 2-3 sentence blurb. "
+        "Reply ONLY with this JSON:\n"
+        '{"stories": ['
+        '{"headline": "...", "blurb": "...", "link": "https://..."}, '
+        '{"headline": "...", "link": "https://..."}, '
+        '{"headline": "...", "link": "https://..."}, '
+        '{"headline": "...", "link": "https://..."}'
+        "]}"
+    )
     try:
-        result = _claude_curate(entries, "impactful AI", _AI_SYSTEM)
-        return result or _FALLBACK_AI
+        text = _search(prompt, _AI_SYSTEM)
+        stories = _extract_json(text).get("stories", [])
+        if not stories:
+            return _FALLBACK_AI
+        main = stories[0]
+        return {
+            "headline": main.get("headline", ""),
+            "blurb": main.get("blurb", ""),
+            "link": main.get("link", ""),
+            "image": _og_image(main.get("link", "")),
+            "more": [
+                {"headline": s.get("headline", ""), "link": s.get("link", "")}
+                for s in stories[1:]
+            ],
+        }
     except Exception as exc:
-        logger.warning("Claude curation failed for AI impact: %s", exc)
+        logger.warning("fetch_ai_impact failed: %s", exc)
         return _FALLBACK_AI
