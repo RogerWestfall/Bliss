@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import anthropic
 import requests
@@ -85,10 +85,34 @@ def _tavily_search(
     return results
 
 
+def _filter_recent(results: list[dict], days: int = 2) -> list[dict]:
+    """Drop results whose published_date is older than `days` days."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    fresh = []
+    for r in results:
+        raw = r.get("published_date") or ""
+        if not raw:
+            fresh.append(r)
+            continue
+        try:
+            pub = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if pub.tzinfo is None:
+                pub = pub.replace(tzinfo=timezone.utc)
+            if pub >= cutoff:
+                fresh.append(r)
+            else:
+                logger.debug("Dropping old result (%s): %s", raw[:10], r.get("title", "")[:60])
+        except (ValueError, TypeError):
+            fresh.append(r)
+    logger.info("After date filter: %d / %d results kept", len(fresh), len(results))
+    return fresh
+
+
 def _results_to_text(results: list[dict]) -> str:
     lines = []
     for i, r in enumerate(results, 1):
-        lines.append(f"{i}. {r.get('title', '')} — {r.get('url', '')}")
+        pub = (r.get("published_date") or "")[:10] or "date unknown"
+        lines.append(f"{i}. [{pub}] {r.get('title', '')} — {r.get('url', '')}")
         snippet = r.get("content") or r.get("description", "")
         if snippet:
             lines.append(f"   {snippet[:200]}")
@@ -233,14 +257,18 @@ _FALLBACK_NY = {
     "more": [],
 }
 
-_NEWS_INSTRUCTION = (
+_NEWS_INSTRUCTION_TEMPLATE = (
     "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
-    "From the search results below, select the 4 best stories for each section "
-    "and write a warm 2-3 sentence blurb for the first story in each section.\n"
-    "For the New York section: pick specific stories about Brooklyn and Manhattan life — "
-    "community moments, local culture, sports wins, neighborhood happenings in places like "
-    "Bed-Stuy and Bushwick. Do NOT pick generic events calendars, tourist guides, or "
-    "'things to do' roundups. Every pick should read like a story, not a listing.\n"
+    "Today is {today}. "
+    "From the search results below, select the 4 best stories for each section. "
+    "IMPORTANT: only use stories published within the last 2 days — each result shows its date in brackets. "
+    "Reject any story dated earlier than {cutoff}. "
+    "Write a warm 2-3 sentence blurb for the first story in each section.\n"
+    "For the New York section: pick a MIX of stories — at most 1 sports story, "
+    "the rest should be community, culture, neighborhood, or local news. "
+    "Pick specific stories about Brooklyn and Manhattan life — community moments, local culture, "
+    "neighborhood happenings in places like Bed-Stuy and Bushwick. "
+    "Do NOT pick generic events calendars, tourist guides, or 'things to do' roundups.\n"
     "Respond ONLY with valid JSON — no other text, no markdown:\n"
     '{"good_news":['
     '{"headline":"...","blurb":"...","link":"https://..."},'
@@ -264,37 +292,42 @@ _NEWS_INSTRUCTION = (
 def fetch_news() -> tuple[dict, dict, dict]:
     """Fetch good news, AI impact, and NYC news using Tavily, summarized by Haiku."""
     today = date.today().strftime("%B %d, %Y")
+    cutoff = (date.today() - timedelta(days=2)).strftime("%B %d, %Y")
     try:
         # Good news: 7 from mainstream + 3 from dedicated positive sites
         mainstream_results = _tavily_search(
             "uplifting positive news kindness breakthrough community environment",
             max_results=7,
             days=2,
+            topic="news",
             include_domains=_MAINSTREAM_DOMAINS,
         )
         positive_results = _tavily_search(
             "good news uplifting positive",
             max_results=3,
             days=2,
+            topic="news",
             include_domains=_POSITIVE_DOMAINS,
         )
-        good_results = mainstream_results + positive_results
+        good_results = _filter_recent(mainstream_results + positive_results)
 
-        ai_results = _tavily_search(
+        ai_results = _filter_recent(_tavily_search(
             "AI artificial intelligence positive impact healthcare climate accessibility education",
             max_results=10,
             days=2,
+            topic="news",
             include_domains=_AI_DOMAINS,
-        )
+        ))
 
-        ny_results = _tavily_search(
-            "Brooklyn Manhattan community news skate park street art culture Knicks Mets "
-            "Bed-Stuy Bushwick neighborhood local story",
+        ny_results = _filter_recent(_tavily_search(
+            "Brooklyn Manhattan community neighborhood culture local news Knicks Mets",
             max_results=10,
             days=2,
             topic="news",
             include_domains=_NYC_DOMAINS,
-        )
+        ))
+
+        instruction = _NEWS_INSTRUCTION_TEMPLATE.format(today=today, cutoff=cutoff)
 
         combined = (
             f"TODAY: {today}\n\n"
@@ -306,7 +339,7 @@ def fetch_news() -> tuple[dict, dict, dict]:
             + _results_to_text(ny_results)
         )
 
-        text = _summarize(combined, _NEWS_INSTRUCTION)
+        text = _summarize(combined, instruction)
         data = _extract_json(text)
 
         good_news = _shape_stories(data.get("good_news", [])) or _FALLBACK_GOOD_NEWS
