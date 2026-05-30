@@ -2,8 +2,8 @@ name: Send Bliss Daily Newsletter
 
 on:
   schedule:
-    # 9:00 AM UTC every day — adjust to your timezone if needed
-    - cron: "0 9 * * *"
+    # 8:00 AM UTC every day
+    - cron: "0 8 * * *"
   workflow_dispatch:
     inputs:
       preview:
