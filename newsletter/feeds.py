@@ -60,6 +60,7 @@ def _tavily_search(
     max_results: int = 10,
     days: int = 3,
     include_domains: list[str] | None = None,
+    topic: str = "general",
 ) -> list[dict]:
     """Return web results from Tavily Search API."""
     payload = {
@@ -68,6 +69,7 @@ def _tavily_search(
         "search_depth": "basic",
         "max_results": max_results,
         "days": days,
+        "topic": topic,
         "exclude_domains": _EXCLUDED_DOMAINS,
     }
     if include_domains:
@@ -289,7 +291,8 @@ def fetch_news() -> tuple[dict, dict, dict]:
             "Brooklyn Manhattan community news skate park street art culture Knicks Mets "
             "Bed-Stuy Bushwick neighborhood local story",
             max_results=10,
-            days=14,
+            days=5,
+            topic="news",
             include_domains=_NYC_DOMAINS,
         )
 
