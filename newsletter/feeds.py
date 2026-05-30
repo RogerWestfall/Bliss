@@ -175,16 +175,16 @@ _AI_DOMAINS = [
 ]
 
 _NYC_DOMAINS = [
-    "timeout.com",          # events, things to do
-    "gothamist.com",        # NYC local news
-    "brooklynpaper.com",    # Brooklyn hyperlocal
-    "bklyner.com",          # Brooklyn neighborhood news
-    "amny.com",             # AM New York
+    "gothamist.com",        # NYC local news & culture
+    "brooklynpaper.com",    # Brooklyn hyperlocal stories
+    "bklyner.com",          # Bed-Stuy, Crown Heights, neighborhood news
+    "amny.com",             # AM New York local news
     "ny1.com",              # NY1 local news
     "nydailynews.com",      # NY Daily News
-    "nypost.com",           # NY Post
-    "nycgo.com",            # NYC official events/tourism
-    "untappedcities.com",   # NYC hidden gems & culture
+    "nypost.com",           # NY Post (sports strong)
+    "untappedcities.com",   # NYC hidden gems & culture stories
+    "curbed.com",           # NYC urban life & neighborhood stories
+    "newyorker.com",        # NYC culture & stories
 ]
 
 # Domains to exclude from all searches (paywalls, etc.)
@@ -232,7 +232,11 @@ _FALLBACK_NY = {
 _NEWS_INSTRUCTION = (
     "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
     "From the search results below, select the 4 best stories for each section "
-    "and write a warm 2-3 sentence blurb for the first story in each section. "
+    "and write a warm 2-3 sentence blurb for the first story in each section.\n"
+    "For the New York section: pick specific stories about Brooklyn and Manhattan life — "
+    "community moments, local culture, sports wins, neighborhood happenings in places like "
+    "Bed-Stuy and Bushwick. Do NOT pick generic events calendars, tourist guides, or "
+    "'things to do' roundups. Every pick should read like a story, not a listing.\n"
     "Respond ONLY with valid JSON — no other text, no markdown:\n"
     '{"good_news":['
     '{"headline":"...","blurb":"...","link":"https://..."},'
@@ -280,8 +284,8 @@ def fetch_news() -> tuple[dict, dict, dict]:
         )
 
         ny_results = _tavily_search(
-            "New York City Brooklyn Manhattan good news events skateboarding baseball basketball "
-            "Bed-Stuy Bushwick free things to do Mets Yankees Knicks Nets",
+            "Brooklyn Bed-Stuy Bushwick community story neighborhood culture skateboarding "
+            "Mets Yankees Knicks Nets win local",
             max_results=10,
             days=7,
             include_domains=_NYC_DOMAINS,
