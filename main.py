@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Entry point: fetch content, render HTML, send email."""
 
-import logging
 import argparse
+import logging
 import sys
 
 logging.basicConfig(
@@ -12,32 +12,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Sample content used with --mock (no live feeds needed)
+_MOCK = {
+    "quote": {
+        "quote": "I may not have gone where I intended to go, but I think I have ended up where I intended to be.",
+        "author": "Douglas Adams",
+    },
+    "good_news": {
+        "headline": "Volunteers Plant One Million Trees Across Drought-Stricken Communities",
+        "blurb": (
+            "A coalition of grassroots volunteers completed a landmark reforestation project this week, "
+            "planting one million native trees across communities hardest hit by decades of drought. "
+            "Organizers say the restored canopy will lower summer temperatures, improve air quality, "
+            "and provide habitat for over 200 local species within the next decade."
+        ),
+        "link": "https://www.goodnewsnetwork.org",
+        "image": "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=600&q=80",
+    },
+    "ai_impact": {
+        "headline": "AI System Detects Early-Stage Pancreatic Cancer With 90% Accuracy",
+        "blurb": (
+            "Researchers at Johns Hopkins have developed an AI diagnostic tool that identifies "
+            "pancreatic cancer at its earliest, most treatable stage with 90% accuracy — nearly "
+            "double the current clinical benchmark. The model is being fast-tracked for clinical "
+            "trials and could save tens of thousands of lives annually worldwide."
+        ),
+        "link": "https://www.technologyreview.com",
+        "image": "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&q=80",
+    },
+}
+
 
 def main(preview: bool = False, output: str | None = None, mock: bool = False) -> None:
     from newsletter.renderer import render
     from newsletter.sender import send
 
     if mock:
-        from newsletter.mock import QUOTE, GOOD_NEWS, AI_IMPACT
-        quote, good_news, ai_impact = QUOTE, GOOD_NEWS, AI_IMPACT
+        quote, good_news, ai_impact = _MOCK["quote"], _MOCK["good_news"], _MOCK["ai_impact"]
         logger.info("Mock mode — using sample content")
     else:
-        from newsletter.content import fetch_quote, fetch_good_news, fetch_ai_impact
+        from newsletter.feeds import fetch_quote, fetch_good_news, fetch_ai_impact
         logger.info("Fetching content...")
         quote = fetch_quote()
-        logger.info("Quote: %s — %s", quote["quote"][:60], quote["author"])
+        logger.info('Quote: "%s" — %s', quote["quote"][:55], quote["author"])
         good_news = fetch_good_news()
         logger.info("Good News: %s", good_news["headline"])
         ai_impact = fetch_ai_impact()
-        logger.info("AI Impact: %s", ai_impact["headline"])
+        logger.info("Impactful AI: %s", ai_impact["headline"])
 
-    logger.info("Rendering newsletter...")
     html = render(quote, good_news, ai_impact)
 
     if output:
         with open(output, "w", encoding="utf-8") as f:
             f.write(html)
-        logger.info("Saved HTML preview to: %s", output)
+        logger.info("Saved to: %s", output)
 
     if not preview:
         logger.info("Sending newsletter...")
@@ -49,24 +77,12 @@ def main(preview: bool = False, output: str | None = None, mock: bool = False) -
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Send the Bliss Daily newsletter.")
-    parser.add_argument(
-        "--preview",
-        action="store_true",
-        help="Generate the newsletter but do not send it.",
-    )
-    parser.add_argument(
-        "--output",
-        metavar="FILE",
-        help="Save the rendered HTML to a file (useful with --preview).",
-    )
-    parser.add_argument(
-        "--mock",
-        action="store_true",
-        help="Use sample content instead of live APIs (no API key needed).",
-    )
+    parser.add_argument("--preview", action="store_true", help="Render but do not send.")
+    parser.add_argument("--output", metavar="FILE", help="Save rendered HTML to a file.")
+    parser.add_argument("--mock", action="store_true", help="Use sample content (no feeds needed).")
     args = parser.parse_args()
     try:
         main(preview=args.preview, output=args.output, mock=args.mock)
     except Exception as exc:
-        logger.error("Fatal error: %s", exc, exc_info=True)
+        logger.error("Fatal: %s", exc, exc_info=True)
         sys.exit(1)

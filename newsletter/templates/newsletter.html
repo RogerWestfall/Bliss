@@ -3,207 +3,218 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bliss Daily — {{ date }}</title>
-  <!--[if mso]>
-  <noscript>
-    <xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
-  </noscript>
-  <![endif]-->
+  <title>Bliss — {{ date }}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f0f4f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background-color:#ede9fe;
+             font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
 
-  <!-- Preheader text (hidden, shows in inbox preview) -->
-  <div style="display:none;max-height:0;overflow:hidden;color:#f0f4f8;">
+  <!-- Hidden preheader shows in inbox preview -->
+  <div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#ede9fe;">
     ✨ Your daily dose of positivity — {{ date }}
-    &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+    &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
   </div>
 
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-         style="background-color:#f0f4f8;">
+         style="background-color:#ede9fe;">
     <tr>
-      <td align="center" style="padding:24px 16px;">
+      <td align="center" style="padding:32px 16px 48px;">
 
-        <!-- Email container -->
+        <!-- ═══ CARD ═══ -->
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0"
-               style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;
-                      overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+               style="max-width:600px;width:100%;background-color:#ffffff;
+                      border-radius:24px;overflow:hidden;
+                      box-shadow:0 8px 48px rgba(91,33,182,0.14);">
 
-          <!-- ===== HEADER ===== -->
+          <!-- ── HEADER ── -->
           <tr>
-            <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-                       padding:40px 40px 32px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:13px;letter-spacing:3px;text-transform:uppercase;
-                        color:rgba(255,255,255,0.75);font-weight:600;">
+            <td style="background:linear-gradient(140deg,#3730a3 0%,#6d28d9 55%,#9333ea 100%);
+                       padding:52px 40px 44px;text-align:center;">
+              <p style="margin:0;font-size:10px;letter-spacing:5px;text-transform:uppercase;
+                        color:rgba(255,255,255,0.55);font-weight:700;">
                 Daily Newsletter
               </p>
-              <h1 style="margin:0;font-size:42px;font-weight:800;color:#ffffff;letter-spacing:-1px;">
+              <h1 style="margin:10px 0 0;font-size:52px;font-weight:800;color:#ffffff;
+                          letter-spacing:-2px;line-height:1.05;">
                 ✨ Bliss
               </h1>
-              <p style="margin:12px 0 0;font-size:15px;color:rgba(255,255,255,0.85);">
+              <p style="margin:14px 0 0;font-size:14px;color:rgba(255,255,255,0.75);
+                        font-weight:500;letter-spacing:0.3px;">
                 {{ date }}
               </p>
             </td>
           </tr>
 
-          <!-- ===== INTRO ===== -->
+          <!-- ── INTRO ── -->
           <tr>
-            <td style="padding:28px 40px 0;text-align:center;">
-              <p style="margin:0;font-size:16px;line-height:1.6;color:#6b7280;">
-                Good things are happening every day. Here's your curated selection
-                of positivity, progress, and possibility.
+            <td style="padding:36px 48px 28px;text-align:center;">
+              <p style="margin:0;font-size:16px;line-height:1.75;color:#6b7280;font-weight:400;">
+                Good things are happening every day.<br />
+                Here's your curated dose of positivity, progress, and possibility.
               </p>
             </td>
           </tr>
 
-          <!-- ===== DIVIDER ===== -->
+          <!-- ── DIVIDER ── -->
           <tr>
-            <td style="padding:24px 40px;">
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:0;" />
+            <td style="padding:0 40px 4px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr><td style="height:1px;background:#f3f4f6;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
             </td>
           </tr>
 
-          <!-- ===== SECTION 1: QUOTE OF THE DAY ===== -->
+          <!-- ══════════════════════════════════════════
+               SECTION 1 — QUOTE OF THE DAY
+               ══════════════════════════════════════════ -->
           <tr>
-            <td style="padding:0 40px 32px;">
+            <td style="padding:36px 40px 32px;">
 
-              <!-- Section label -->
-              <p style="margin:0 0 20px;font-size:11px;font-weight:700;letter-spacing:2.5px;
-                        text-transform:uppercase;color:#667eea;">
+              <p style="margin:0 0 22px;font-size:10px;font-weight:700;letter-spacing:3.5px;
+                        text-transform:uppercase;color:#7c3aed;">
                 💬 &nbsp;Quote of the Day
               </p>
 
               <!-- Quote card -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="background:linear-gradient(135deg,#f3f0ff 0%,#fce4ff 100%);
-                             border-left:4px solid #764ba2;border-radius:0 12px 12px 0;
-                             padding:24px 28px;">
-                    <p style="margin:0 0 16px;font-size:22px;line-height:1.5;color:#1f2937;
-                               font-style:italic;font-weight:500;">
+                  <td style="background:#faf5ff;border-left:5px solid #7c3aed;
+                             border-radius:0 16px 16px 0;padding:28px 32px 28px 28px;">
+                    <p style="margin:0 0 20px;font-size:20px;line-height:1.6;color:#1f2937;
+                               font-style:italic;font-weight:400;">
                       &ldquo;{{ quote.quote }}&rdquo;
                     </p>
-                    <p style="margin:0;font-size:14px;font-weight:700;color:#764ba2;
-                               letter-spacing:0.5px;">
+                    <p style="margin:0;font-size:12px;font-weight:700;color:#7c3aed;
+                               letter-spacing:1.5px;text-transform:uppercase;">
                       — {{ quote.author }}
                     </p>
                   </td>
                 </tr>
               </table>
+
             </td>
           </tr>
 
-          <!-- ===== DIVIDER ===== -->
+          <!-- ── DIVIDER ── -->
           <tr>
-            <td style="padding:0 40px 32px;">
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:0;" />
+            <td style="padding:0 40px 4px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr><td style="height:1px;background:#f3f4f6;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
             </td>
           </tr>
 
-          <!-- ===== SECTION 2: GOOD NEWS ===== -->
+          <!-- ══════════════════════════════════════════
+               SECTION 2 — GOOD NEWS
+               ══════════════════════════════════════════ -->
           <tr>
-            <td style="padding:0 40px 32px;">
+            <td style="padding:36px 40px 32px;">
 
-              <!-- Section label -->
-              <p style="margin:0 0 20px;font-size:11px;font-weight:700;letter-spacing:2.5px;
-                        text-transform:uppercase;color:#10b981;">
+              <p style="margin:0 0 22px;font-size:10px;font-weight:700;letter-spacing:3.5px;
+                        text-transform:uppercase;color:#059669;">
                 🌍 &nbsp;Good News
               </p>
 
               {% if good_news.image %}
-              <!-- Story image -->
-              <div style="border-radius:12px;overflow:hidden;margin-bottom:20px;">
+              <div style="margin-bottom:22px;border-radius:14px;overflow:hidden;line-height:0;">
                 <img src="{{ good_news.image }}"
                      alt="{{ good_news.headline }}"
                      width="520"
-                     style="width:100%;max-width:520px;height:auto;display:block;
-                            border-radius:12px;" />
+                     style="width:100%;max-width:520px;height:auto;display:block;border-radius:14px;" />
               </div>
               {% endif %}
 
-              <!-- Headline -->
-              <h2 style="margin:0 0 12px;font-size:22px;font-weight:700;line-height:1.3;
-                          color:#1f2937;">
+              <h2 style="margin:0 0 14px;font-size:22px;font-weight:700;line-height:1.35;
+                          color:#111827;letter-spacing:-0.3px;">
                 {{ good_news.headline }}
               </h2>
 
-              <!-- Blurb -->
-              <p style="margin:0 0 20px;font-size:16px;line-height:1.7;color:#4b5563;">
+              <p style="margin:0 0 26px;font-size:16px;line-height:1.8;color:#4b5563;">
                 {{ good_news.blurb }}
               </p>
 
               {% if good_news.link %}
-              <!-- CTA -->
-              <a href="{{ good_news.link }}"
-                 style="display:inline-block;background-color:#10b981;color:#ffffff;
-                        text-decoration:none;padding:12px 24px;border-radius:8px;
-                        font-size:14px;font-weight:600;letter-spacing:0.3px;">
-                Read the full story →
-              </a>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="border-radius:10px;background-color:#059669;">
+                    <a href="{{ good_news.link }}"
+                       style="display:inline-block;padding:13px 30px;color:#ffffff;
+                              text-decoration:none;font-size:14px;font-weight:600;
+                              letter-spacing:0.2px;border-radius:10px;">
+                      Read the full story &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
               {% endif %}
+
             </td>
           </tr>
 
-          <!-- ===== DIVIDER ===== -->
+          <!-- ── DIVIDER ── -->
           <tr>
-            <td style="padding:0 40px 32px;">
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:0;" />
+            <td style="padding:0 40px 4px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr><td style="height:1px;background:#f3f4f6;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
             </td>
           </tr>
 
-          <!-- ===== SECTION 3: IMPACTFUL AI ===== -->
+          <!-- ══════════════════════════════════════════
+               SECTION 3 — IMPACTFUL AI
+               ══════════════════════════════════════════ -->
           <tr>
-            <td style="padding:0 40px 40px;">
+            <td style="padding:36px 40px 48px;">
 
-              <!-- Section label -->
-              <p style="margin:0 0 20px;font-size:11px;font-weight:700;letter-spacing:2.5px;
-                        text-transform:uppercase;color:#3b82f6;">
+              <p style="margin:0 0 22px;font-size:10px;font-weight:700;letter-spacing:3.5px;
+                        text-transform:uppercase;color:#2563eb;">
                 🤖 &nbsp;Impactful AI
               </p>
 
               {% if ai_impact.image %}
-              <!-- Story image -->
-              <div style="border-radius:12px;overflow:hidden;margin-bottom:20px;">
+              <div style="margin-bottom:22px;border-radius:14px;overflow:hidden;line-height:0;">
                 <img src="{{ ai_impact.image }}"
                      alt="{{ ai_impact.headline }}"
                      width="520"
-                     style="width:100%;max-width:520px;height:auto;display:block;
-                            border-radius:12px;" />
+                     style="width:100%;max-width:520px;height:auto;display:block;border-radius:14px;" />
               </div>
               {% endif %}
 
-              <!-- Headline -->
-              <h2 style="margin:0 0 12px;font-size:22px;font-weight:700;line-height:1.3;
-                          color:#1f2937;">
+              <h2 style="margin:0 0 14px;font-size:22px;font-weight:700;line-height:1.35;
+                          color:#111827;letter-spacing:-0.3px;">
                 {{ ai_impact.headline }}
               </h2>
 
-              <!-- Blurb -->
-              <p style="margin:0 0 20px;font-size:16px;line-height:1.7;color:#4b5563;">
+              <p style="margin:0 0 26px;font-size:16px;line-height:1.8;color:#4b5563;">
                 {{ ai_impact.blurb }}
               </p>
 
               {% if ai_impact.link %}
-              <!-- CTA -->
-              <a href="{{ ai_impact.link }}"
-                 style="display:inline-block;background-color:#3b82f6;color:#ffffff;
-                        text-decoration:none;padding:12px 24px;border-radius:8px;
-                        font-size:14px;font-weight:600;letter-spacing:0.3px;">
-                Read the full story →
-              </a>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="border-radius:10px;background-color:#2563eb;">
+                    <a href="{{ ai_impact.link }}"
+                       style="display:inline-block;padding:13px 30px;color:#ffffff;
+                              text-decoration:none;font-size:14px;font-weight:600;
+                              letter-spacing:0.2px;border-radius:10px;">
+                      Read the full story &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
               {% endif %}
+
             </td>
           </tr>
 
-          <!-- ===== FOOTER ===== -->
+          <!-- ── FOOTER ── -->
           <tr>
-            <td style="background-color:#f9fafb;border-top:1px solid #e5e7eb;
-                       padding:28px 40px;text-align:center;border-radius:0 0 16px 16px;">
-              <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1f2937;">
+            <td style="background-color:#f9fafb;border-top:1px solid #f3f4f6;
+                       padding:32px 40px;text-align:center;border-radius:0 0 24px 24px;">
+              <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#374151;">
                 ✨ Bliss Daily
               </p>
-              <p style="margin:0 0 12px;font-size:13px;color:#9ca3af;line-height:1.5;">
-                Curating positivity, one day at a time.<br />
-                Delivered to you with care.
+              <p style="margin:0 0 18px;font-size:13px;color:#9ca3af;line-height:1.6;">
+                Curating positivity, one day at a time.
               </p>
               <p style="margin:0;font-size:12px;color:#d1d5db;">
                 You're receiving this because you subscribed to Bliss Daily.
@@ -212,7 +223,7 @@
           </tr>
 
         </table>
-        <!-- End email container -->
+        <!-- End card -->
 
       </td>
     </tr>

@@ -2,7 +2,7 @@ name: Send Bliss Daily Newsletter
 
 on:
   schedule:
-    # 9:00 AM UTC daily (adjust to your timezone)
+    # 9:00 AM UTC every day — adjust to your timezone if needed
     - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
@@ -35,7 +35,6 @@ jobs:
 
       - name: Send newsletter
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
