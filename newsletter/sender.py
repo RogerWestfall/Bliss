@@ -20,7 +20,7 @@ def send(html: str) -> None:
             "No recipients configured. Set NEWSLETTER_RECIPIENTS in your .env file."
         )
 
-    subject = f"✨ Bliss Daily — {datetime.now().strftime('%B %d, %Y')}"
+    subject = f"Bliss — {datetime.now().strftime('%B %d, %Y')}"
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
