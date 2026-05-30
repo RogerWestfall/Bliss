@@ -1,4 +1,4 @@
-"""Fetch newsletter content using Claude web search."""
+"""Fetch newsletter content using Brave Search + Claude summarization."""
 
 import json
 import logging
@@ -9,7 +9,7 @@ import anthropic
 import requests
 from lxml import html as lhtml
 
-from newsletter.config import ANTHROPIC_API_KEY
+from newsletter.config import ANTHROPIC_API_KEY, BRAVE_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -55,68 +55,44 @@ def _og_image(url: str) -> str:
     return ""
 
 
-def _search(prompt: str, system: str) -> str:
-    """Run Claude with web search and return the final text response."""
-    messages = [{"role": "user", "content": prompt}]
-    text = ""
-
-    for i in range(8):
-        resp = _client().messages.create(
-            model=_MODEL,
-            max_tokens=2048,
-            system=system,
-            tools=[{"type": "web_search_20250305", "name": "web_search"}],
-            messages=messages,
-        )
-
-        block_types = [getattr(b, "type", "?") for b in resp.content]
-        logger.info("Round %d | stop_reason=%s | blocks=%s", i + 1, resp.stop_reason, block_types)
-
-        for j, b in enumerate(resp.content):
-            btype = getattr(b, "type", "?")
-            if btype == "text":
-                btext = getattr(b, "text", "") or ""
-                logger.info("  [%d] text (%d chars): %s", j, len(btext), btext[:200])
-            elif btype == "tool_use":
-                logger.info("  [%d] tool_use id=%s input=%s", j, getattr(b, "id", "?"), str(getattr(b, "input", {}))[:150])
-            else:
-                logger.info("  [%d] %s: %s", j, btype, str(b)[:200])
-
-        text = "".join(
-            getattr(b, "text", "") or ""
-            for b in resp.content
-            if getattr(b, "type", "") == "text"
-        )
-
-        if resp.stop_reason == "end_turn":
-            if text:
-                return text
-            logger.warning("Round %d: end_turn with no text, requesting synthesis", i + 1)
-            messages.append({"role": "assistant", "content": resp.content})
-            messages.append({
-                "role": "user",
-                "content": "Now write the JSON response based on your search results.",
-            })
-            continue
-
-        if resp.stop_reason == "tool_use":
-            messages.append({"role": "assistant", "content": resp.content})
-            tool_results = [
-                {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
-                for b in resp.content
-                if getattr(b, "type", "") == "tool_use"
-            ]
-            if tool_results:
-                messages.append({"role": "user", "content": tool_results})
-            continue
-
-        break
-
-    return text
+def _brave_search(query: str, count: int = 10, freshness: str = "pd") -> list[dict]:
+    """Return web results from Brave Search API."""
+    resp = requests.get(
+        "https://api.search.brave.com/res/v1/web/search",
+        headers={
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": BRAVE_API_KEY,
+        },
+        params={"q": query, "count": count, "freshness": freshness},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    results = resp.json().get("web", {}).get("results", [])
+    logger.info("Brave search '%s' → %d results", query, len(results))
+    return results
 
 
-def _shape_stories(stories: list) -> dict:
-    """Convert a list of story dicts into the newsletter section format."""
+def _results_to_text(results: list[dict]) -> str:
+    lines = []
+    for i, r in enumerate(results, 1):
+        lines.append(f"{i}. {r.get('title', '')} — {r.get('url', '')}")
+        if r.get("description"):
+            lines.append(f"   {r['description']}")
+    return "\n".join(lines)
+
+
+def _summarize(content: str, instruction: str) -> str:
+    """Ask Haiku to pick and write up stories from raw search results."""
+    resp = _client().messages.create(
+        model=_MODEL,
+        max_tokens=1024,
+        messages=[{"role": "user", "content": f"{instruction}\n\n{content}"}],
+    )
+    return resp.content[0].text
+
+
+def _shape_stories(stories: list) -> dict | None:
     if not stories:
         return None
     main = stories[0]
@@ -153,13 +129,7 @@ def fetch_quote() -> dict:
         return _FALLBACK_QUOTE
 
 
-# ── News (good news + AI impact in one search call) ───────────────────────────
-
-_NEWS_SYSTEM = (
-    "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
-    "Find real, current stories via web search. Write in a warm, engaging tone. "
-    "Respond ONLY with valid JSON — no other text, no markdown."
-)
+# ── News (Brave search + Haiku summarization) ─────────────────────────────────
 
 _FALLBACK_GOOD_NEWS = {
     "headline": "Volunteers Around the World Continue to Make a Difference",
@@ -183,37 +153,55 @@ _FALLBACK_AI = {
     "more": [],
 }
 
+_NEWS_INSTRUCTION = (
+    "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
+    "From the search results below, select the 4 best stories for each section "
+    "and write a warm 2-3 sentence blurb for the first story in each section. "
+    "Respond ONLY with valid JSON — no other text, no markdown:\n"
+    '{"good_news":['
+    '{"headline":"...","blurb":"...","link":"https://..."},'
+    '{"headline":"...","link":"https://..."},'
+    '{"headline":"...","link":"https://..."},'
+    '{"headline":"...","link":"https://..."}'
+    '],"ai_impact":['
+    '{"headline":"...","blurb":"...","link":"https://..."},'
+    '{"headline":"...","link":"https://..."},'
+    '{"headline":"...","link":"https://..."},'
+    '{"headline":"...","link":"https://..."}'
+    "]}"
+)
+
 
 def fetch_news() -> tuple[dict, dict]:
-    """Return (good_news, ai_impact) using a single web search call."""
+    """Fetch good news + AI impact using Brave Search, summarized by Haiku."""
     today = date.today().strftime("%B %d, %Y")
-    prompt = (
-        f"Today is {today}. Search the web and find two sets of stories:\n\n"
-        "1. GOOD NEWS — 4 uplifting stories published in the last 48 hours: "
-        "acts of kindness, scientific breakthroughs, environmental wins, community achievements. "
-        "No politics or tragedy. Write a warm 2-3 sentence blurb for story #1.\n\n"
-        "2. AI IMPACT — 4 stories from the last 7 days about AI creating genuine positive impact: "
-        "healthcare, climate, accessibility, education, humanitarian aid. Real results only, no hype. "
-        "Write an optimistic 2-3 sentence blurb for story #1.\n\n"
-        "Reply ONLY with this JSON:\n"
-        '{"good_news":['
-        '{"headline":"...","blurb":"...","link":"https://..."},'
-        '{"headline":"...","link":"https://..."},'
-        '{"headline":"...","link":"https://..."},'
-        '{"headline":"...","link":"https://..."}'
-        '],"ai_impact":['
-        '{"headline":"...","blurb":"...","link":"https://..."},'
-        '{"headline":"...","link":"https://..."},'
-        '{"headline":"...","link":"https://..."},'
-        '{"headline":"...","link":"https://..."}'
-        "]}"
-    )
     try:
-        text = _search(prompt, _NEWS_SYSTEM)
+        good_results = _brave_search(
+            f"uplifting good news positive stories {today}",
+            count=10,
+            freshness="pd",
+        )
+        ai_results = _brave_search(
+            f"AI artificial intelligence positive impact breakthrough {today}",
+            count=10,
+            freshness="pw",
+        )
+
+        combined = (
+            f"TODAY: {today}\n\n"
+            "=== GOOD NEWS SEARCH RESULTS ===\n"
+            + _results_to_text(good_results)
+            + "\n\n=== AI IMPACT SEARCH RESULTS ===\n"
+            + _results_to_text(ai_results)
+        )
+
+        text = _summarize(combined, _NEWS_INSTRUCTION)
         data = _extract_json(text)
+
         good_news = _shape_stories(data.get("good_news", [])) or _FALLBACK_GOOD_NEWS
         ai_impact = _shape_stories(data.get("ai_impact", [])) or _FALLBACK_AI
         return good_news, ai_impact
+
     except Exception as exc:
         logger.warning("fetch_news failed: %s", exc)
         return _FALLBACK_GOOD_NEWS, _FALLBACK_AI
