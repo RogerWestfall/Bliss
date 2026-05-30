@@ -283,7 +283,7 @@ def fetch_news() -> tuple[dict, dict, dict]:
         ai_results = _tavily_search(
             "AI artificial intelligence positive impact healthcare climate accessibility education",
             max_results=10,
-            days=7,
+            days=2,
             include_domains=_AI_DOMAINS,
         )
 
@@ -291,7 +291,7 @@ def fetch_news() -> tuple[dict, dict, dict]:
             "Brooklyn Manhattan community news skate park street art culture Knicks Mets "
             "Bed-Stuy Bushwick neighborhood local story",
             max_results=10,
-            days=5,
+            days=2,
             topic="news",
             include_domains=_NYC_DOMAINS,
         )
