@@ -55,17 +55,25 @@ def _og_image(url: str) -> str:
     return ""
 
 
-def _tavily_search(query: str, max_results: int = 10, days: int = 3) -> list[dict]:
+def _tavily_search(
+    query: str,
+    max_results: int = 10,
+    days: int = 3,
+    include_domains: list[str] | None = None,
+) -> list[dict]:
     """Return web results from Tavily Search API."""
+    payload = {
+        "api_key": TAVILY_API_KEY,
+        "query": query,
+        "search_depth": "basic",
+        "max_results": max_results,
+        "days": days,
+    }
+    if include_domains:
+        payload["include_domains"] = include_domains
     resp = requests.post(
         "https://api.tavily.com/search",
-        json={
-            "api_key": TAVILY_API_KEY,
-            "query": query,
-            "search_depth": "basic",
-            "max_results": max_results,
-            "days": days,
-        },
+        json=payload,
         timeout=15,
     )
     resp.raise_for_status()
@@ -131,7 +139,21 @@ def fetch_quote() -> dict:
         return _FALLBACK_QUOTE
 
 
-# ── News (Brave search + Haiku summarization) ─────────────────────────────────
+# ── News (Tavily search + Haiku summarization) ───────────────────────────────
+
+_MAINSTREAM_DOMAINS = [
+    "bbc.com", "theguardian.com", "reuters.com", "apnews.com",
+    "npr.org", "nytimes.com", "washingtonpost.com",
+]
+_POSITIVE_DOMAINS = [
+    "goodnewsnetwork.org", "positive.news",
+    "reasonstobecheerful.world", "upworthy.com",
+]
+_AI_DOMAINS = [
+    "technologyreview.com", "wired.com", "nature.com", "newscientist.com",
+    "scientificamerican.com", "npr.org", "bbc.com", "theguardian.com",
+    "reuters.com", "apnews.com",
+]
 
 _FALLBACK_GOOD_NEWS = {
     "headline": "Volunteers Around the World Continue to Make a Difference",
@@ -175,18 +197,29 @@ _NEWS_INSTRUCTION = (
 
 
 def fetch_news() -> tuple[dict, dict]:
-    """Fetch good news + AI impact using Brave Search, summarized by Haiku."""
+    """Fetch good news + AI impact using Tavily Search, summarized by Haiku."""
     today = date.today().strftime("%B %d, %Y")
     try:
-        good_results = _tavily_search(
-            "uplifting positive good news acts of kindness scientific breakthrough",
-            max_results=10,
+        # Good news: 7 from mainstream + 3 from dedicated positive sites
+        mainstream_results = _tavily_search(
+            "uplifting positive news kindness breakthrough community environment",
+            max_results=7,
             days=2,
+            include_domains=_MAINSTREAM_DOMAINS,
         )
+        positive_results = _tavily_search(
+            "good news uplifting positive",
+            max_results=3,
+            days=2,
+            include_domains=_POSITIVE_DOMAINS,
+        )
+        good_results = mainstream_results + positive_results
+
         ai_results = _tavily_search(
-            "AI artificial intelligence positive impact healthcare climate accessibility",
+            "AI artificial intelligence positive impact healthcare climate accessibility education",
             max_results=10,
             days=7,
+            include_domains=_AI_DOMAINS,
         )
 
         combined = (
