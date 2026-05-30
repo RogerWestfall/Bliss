@@ -11,14 +11,6 @@ logger = logging.getLogger(__name__)
 
 _HEADERS = {"User-Agent": "BlissNewsletter/2.0 (rogerlwestfall@gmail.com)"}
 
-# Namespaces used in RSS/Atom feeds
-_NS = {
-    "atom": "http://www.w3.org/2005/Atom",
-    "media": "http://search.yahoo.com/mrss/",
-    "dc": "http://purl.org/dc/elements/1.1/",
-    "content": "http://purl.org/rss/1.0/modules/content/",
-}
-
 
 # ── Quote of the Day ─────────────────────────────────────────────────────────
 
@@ -63,7 +55,7 @@ def _clean_html(raw: str, max_chars: int = 350) -> str:
 
 
 def _img_from_html(raw: str) -> str:
-    """Find the first <img src> in an HTML string."""
+    """Find the first absolute <img src> in an HTML string."""
     if not raw:
         return ""
     try:
@@ -77,6 +69,29 @@ def _img_from_html(raw: str) -> str:
     return ""
 
 
+def _og_image(url: str) -> str:
+    """Fetch an article page and extract its og:image or twitter:image."""
+    if not url:
+        return ""
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=10)
+        resp.raise_for_status()
+        root = lhtml.fromstring(resp.content)
+        for xpath, attr in [
+            ('.//meta[@property="og:image"]', "content"),
+            ('.//meta[@name="twitter:image"]', "content"),
+            ('.//meta[@name="twitter:image:src"]', "content"),
+        ]:
+            el = root.find(xpath)
+            if el is not None:
+                src = el.get(attr, "")
+                if src.startswith("http"):
+                    return src
+    except Exception as exc:
+        logger.debug("og:image fetch failed for %s: %s", url, exc)
+    return ""
+
+
 def _parse_feed(url: str) -> list[dict]:
     """Fetch and parse an RSS or Atom feed. Returns a list of entry dicts."""
     try:
@@ -87,17 +102,18 @@ def _parse_feed(url: str) -> list[dict]:
         logger.warning("Feed %s failed: %s", url, exc)
         return []
 
-    # RSS 2.0 items live at ./channel/item; Atom entries at ./entry
     items = root.findall(".//item")
     if not items:
         items = root.findall(".//{http://www.w3.org/2005/Atom}entry")
 
     entries = []
-    for item in items[:15]:
-        # Title
+    for item in items[:20]:
+        # Title — required
         title = _text(
             item.find("title") or item.find("{http://www.w3.org/2005/Atom}title")
         )
+        if not title:
+            continue
 
         # Link
         link_el = item.find("link")
@@ -107,18 +123,20 @@ def _parse_feed(url: str) -> list[dict]:
             atom_link = item.find("{http://www.w3.org/2005/Atom}link")
             link = atom_link.get("href", "").strip() if atom_link is not None else ""
 
-        # Summary / description
-        for tag in ("description", "{http://www.w3.org/2005/Atom}summary",
-                    "{http://www.w3.org/2005/Atom}content",
-                    "{http://purl.org/rss/1.0/modules/content/}encoded"):
-            summary_el = item.find(tag)
-            if summary_el is not None and summary_el.text:
-                summary = summary_el.text
+        # Summary / description (optional — not required)
+        summary = ""
+        for tag in (
+            "description",
+            "{http://www.w3.org/2005/Atom}summary",
+            "{http://www.w3.org/2005/Atom}content",
+            "{http://purl.org/rss/1.0/modules/content/}encoded",
+        ):
+            el = item.find(tag)
+            if el is not None and el.text:
+                summary = el.text
                 break
-        else:
-            summary = ""
 
-        # Image — media:thumbnail, media:content, then parse HTML
+        # Image — try media tags first, then parse HTML summary
         image = ""
         mt = item.find("{http://search.yahoo.com/mrss/}thumbnail")
         if mt is not None:
@@ -128,15 +146,16 @@ def _parse_feed(url: str) -> list[dict]:
             if mc is not None and (mc.get("type", "") or "").startswith("image"):
                 image = mc.get("url", "")
         if not image:
+            # Also try media:content without type attribute
+            mc = item.find("{http://search.yahoo.com/mrss/}content")
+            if mc is not None and mc.get("url", ""):
+                image = mc.get("url", "")
+        if not image:
             image = _img_from_html(summary)
-
-        blurb = _clean_html(summary)
-        if not blurb or not title:
-            continue
 
         entries.append({
             "headline": title,
-            "blurb": blurb,
+            "blurb": _clean_html(summary),
             "link": link,
             "image": image,
         })
@@ -168,9 +187,9 @@ def _top_matches(feeds: list[str], n: int, keywords: list[str] | None = None) ->
 _GOOD_NEWS_FEEDS = [
     "https://www.goodnewsnetwork.org/feed/",
     "https://www.positive.news/feed/",
-    "https://www.bbc.co.uk/news/10628494#atom.xml",
     "https://www.sunnyskyz.com/feed/rss",
     "https://happynews.com/feed/",
+    "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
 ]
 
 _FALLBACK_GOOD_NEWS = {
@@ -190,6 +209,10 @@ def fetch_good_news() -> dict:
     if not entries:
         return {**_FALLBACK_GOOD_NEWS, "more": []}
     main = entries[0]
+    # Fetch og:image from article page if RSS didn't provide one
+    if not main["image"] and main["link"]:
+        logger.info("Fetching og:image for Good News story...")
+        main["image"] = _og_image(main["link"])
     main["more"] = [{"headline": e["headline"], "link": e["link"]} for e in entries[1:]]
     return main
 
@@ -202,12 +225,14 @@ _AI_FEEDS = [
     "https://feeds.feedburner.com/TechCrunch/AI",
     "https://news.mit.edu/rss/topic/artificial-intelligence2",
     "https://www.sciencedaily.com/rss/computers_math/artificial_intelligence.xml",
+    "https://deepmind.google/blog/rss.xml",
 ]
 
 _AI_POSITIVE_KEYWORDS = [
     "health", "medical", "cancer", "climate", "environment", "accessib",
     "education", "research", "discover", "humanitarian", "disease", "diagnos",
     "patient", "wildfire", "flood", "drug", "protein", "blind", "deaf",
+    "assist", "help", "improve", "breakthrough", "detect",
 ]
 
 _FALLBACK_AI = {
@@ -224,10 +249,10 @@ _FALLBACK_AI = {
 
 def fetch_ai_impact() -> dict:
     entries = _top_matches(_AI_FEEDS, 4, keywords=_AI_POSITIVE_KEYWORDS)
+    # Top up with any AI entries if keyword filter didn't return enough
     if len(entries) < 4:
-        # Top up with any AI entries if keyword filter didn't return enough
         seen = {e["link"] for e in entries}
-        for e in _top_matches(_AI_FEEDS, 4):
+        for e in _top_matches(_AI_FEEDS, 8):
             if e["link"] not in seen:
                 entries.append(e)
                 seen.add(e["link"])
@@ -236,5 +261,9 @@ def fetch_ai_impact() -> dict:
     if not entries:
         return {**_FALLBACK_AI, "more": []}
     main = entries[0]
+    # Fetch og:image from article page if RSS didn't provide one
+    if not main["image"] and main["link"]:
+        logger.info("Fetching og:image for AI Impact story...")
+        main["image"] = _og_image(main["link"])
     main["more"] = [{"headline": e["headline"], "link": e["link"]} for e in entries[1:4]]
     return main
