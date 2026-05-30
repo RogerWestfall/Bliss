@@ -99,7 +99,7 @@ def _summarize(content: str, instruction: str) -> str:
     """Ask Haiku to pick and write up stories from raw search results."""
     resp = _client().messages.create(
         model=_MODEL,
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[{"role": "user", "content": f"{instruction}\n\n{content}"}],
     )
     return resp.content[0].text
