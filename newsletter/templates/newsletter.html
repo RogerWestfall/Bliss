@@ -189,7 +189,82 @@
           </tr>
 
           <!-- ══════════════════════════════════════════
-               SECTION 3 — IMPACTFUL AI
+               SECTION 3 — NEW YORK
+               ══════════════════════════════════════════ -->
+          <tr>
+            <td class="section" style="padding:36px 40px 32px;">
+
+              <p style="margin:0 0 22px;font-size:10px;font-weight:700;letter-spacing:3.5px;
+                        text-transform:uppercase;color:#8e5492;">
+                New York
+              </p>
+
+              {% if ny_news.image %}
+              <div style="margin-bottom:22px;border-radius:12px;overflow:hidden;line-height:0;">
+                <img src="{{ ny_news.image }}"
+                     alt="{{ ny_news.headline }}"
+                     width="520"
+                     style="width:100%;max-width:520px;height:auto;display:block;border-radius:12px;" />
+              </div>
+              {% endif %}
+
+              <h2 class="headline"
+                  style="margin:0 0 14px;font-size:22px;font-weight:700;line-height:1.35;
+                         color:#1f1e1d;letter-spacing:-0.3px;">
+                {{ ny_news.headline }}
+              </h2>
+
+              <p style="margin:0 0 26px;font-size:16px;line-height:1.8;color:#7d7979;">
+                {{ ny_news.blurb }}
+              </p>
+
+              {% if ny_news.link %}
+              <table role="presentation" class="btn-wrap" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="border-radius:8px;background-color:#8e5492;">
+                    <a href="{{ ny_news.link }}" class="btn"
+                       style="display:inline-block;padding:13px 30px;color:#f7f4e6;
+                              text-decoration:none;font-size:14px;font-weight:600;
+                              letter-spacing:0.3px;border-radius:8px;">
+                      Read the full story &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+
+              {% if ny_news.more %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                     style="margin-top:24px;">
+                {% for story in ny_news.more %}
+                <tr>
+                  <td style="padding:11px 0;border-top:1px solid #f7f4e6;">
+                    <a href="{{ story.link }}"
+                       style="color:#1f1e1d;text-decoration:none;font-size:15px;
+                              font-weight:600;line-height:1.4;">
+                      {{ story.headline }}
+                    </a>
+                    <span style="color:#8e5492;font-size:15px;"> &rarr;</span>
+                  </td>
+                </tr>
+                {% endfor %}
+              </table>
+              {% endif %}
+
+            </td>
+          </tr>
+
+          <!-- ── DIVIDER ── -->
+          <tr>
+            <td style="padding:0 40px 4px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr><td style="height:1px;background-color:#f7f4e6;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ══════════════════════════════════════════
+               SECTION 4 — IMPACTFUL AI
                ══════════════════════════════════════════ -->
           <tr>
             <td class="section-bottom" style="padding:36px 40px 48px;">

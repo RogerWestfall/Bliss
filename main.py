@@ -50,6 +50,22 @@ _MOCK = {
             {"headline": "AI-Powered App Gives Blind Users Real-Time Scene Descriptions", "link": "https://www.technologyreview.com"},
         ],
     },
+    "ny_news": {
+        "headline": "Bushwick's Newest Skate Spot Is a Community-Built Gem",
+        "blurb": (
+            "A crew of local skaters and neighborhood volunteers transformed a vacant lot on "
+            "Jefferson Avenue into a free community skate space, complete with a mini ramp and "
+            "flatground area. Open to all ages, it's already become a daily hangout for kids "
+            "and riders from across Brooklyn."
+        ),
+        "link": "https://www.gothamist.com",
+        "image": "https://images.unsplash.com/photo-1547447134-cd3f5c716030?w=600&q=80",
+        "more": [
+            {"headline": "Mets Rally in the 9th to Take the Series Opener at Citi Field", "link": "https://www.nydailynews.com"},
+            {"headline": "Free Outdoor Movie Nights Return to Prospect Park This Weekend", "link": "https://www.timeout.com"},
+            {"headline": "Bed-Stuy Block Association Wins City Grant for New Community Garden", "link": "https://www.brooklynpaper.com"},
+        ],
+    },
 }
 
 
@@ -58,18 +74,22 @@ def main(preview: bool = False, output: str | None = None, mock: bool = False, e
     from newsletter.sender import send
 
     if mock:
-        quote, good_news, ai_impact = _MOCK["quote"], _MOCK["good_news"], _MOCK["ai_impact"]
+        quote = _MOCK["quote"]
+        good_news = _MOCK["good_news"]
+        ai_impact = _MOCK["ai_impact"]
+        ny_news = _MOCK["ny_news"]
         logger.info("Mock mode — using sample content")
     else:
         from newsletter.feeds import fetch_quote, fetch_news
         logger.info("Fetching content...")
         quote = fetch_quote()
         logger.info('Quote: "%s" — %s', quote["quote"][:55], quote["author"])
-        good_news, ai_impact = fetch_news()
+        good_news, ai_impact, ny_news = fetch_news()
         logger.info("Good News: %s", good_news["headline"])
         logger.info("Impactful AI: %s", ai_impact["headline"])
+        logger.info("New York: %s", ny_news["headline"])
 
-    html = render(quote, good_news, ai_impact)
+    html = render(quote, good_news, ai_impact, ny_news)
 
     if output:
         with open(output, "w", encoding="utf-8") as f:
