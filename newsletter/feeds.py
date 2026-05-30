@@ -9,7 +9,7 @@ import anthropic
 import requests
 from lxml import html as lhtml
 
-from newsletter.config import ANTHROPIC_API_KEY, BRAVE_API_KEY
+from newsletter.config import ANTHROPIC_API_KEY, TAVILY_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -55,21 +55,22 @@ def _og_image(url: str) -> str:
     return ""
 
 
-def _brave_search(query: str, count: int = 10, freshness: str = "pd") -> list[dict]:
-    """Return web results from Brave Search API."""
-    resp = requests.get(
-        "https://api.search.brave.com/res/v1/web/search",
-        headers={
-            "Accept": "application/json",
-            "Accept-Encoding": "gzip",
-            "X-Subscription-Token": BRAVE_API_KEY,
+def _tavily_search(query: str, max_results: int = 10, days: int = 3) -> list[dict]:
+    """Return web results from Tavily Search API."""
+    resp = requests.post(
+        "https://api.tavily.com/search",
+        json={
+            "api_key": TAVILY_API_KEY,
+            "query": query,
+            "search_depth": "basic",
+            "max_results": max_results,
+            "days": days,
         },
-        params={"q": query, "count": count, "freshness": freshness},
         timeout=15,
     )
     resp.raise_for_status()
-    results = resp.json().get("web", {}).get("results", [])
-    logger.info("Brave search '%s' → %d results", query, len(results))
+    results = resp.json().get("results", [])
+    logger.info("Tavily search '%s' → %d results", query, len(results))
     return results
 
 
@@ -77,8 +78,9 @@ def _results_to_text(results: list[dict]) -> str:
     lines = []
     for i, r in enumerate(results, 1):
         lines.append(f"{i}. {r.get('title', '')} — {r.get('url', '')}")
-        if r.get("description"):
-            lines.append(f"   {r['description']}")
+        snippet = r.get("content") or r.get("description", "")
+        if snippet:
+            lines.append(f"   {snippet[:200]}")
     return "\n".join(lines)
 
 
@@ -176,15 +178,15 @@ def fetch_news() -> tuple[dict, dict]:
     """Fetch good news + AI impact using Brave Search, summarized by Haiku."""
     today = date.today().strftime("%B %d, %Y")
     try:
-        good_results = _brave_search(
-            f"uplifting good news positive stories {today}",
-            count=10,
-            freshness="pd",
+        good_results = _tavily_search(
+            "uplifting positive good news acts of kindness scientific breakthrough",
+            max_results=10,
+            days=2,
         )
-        ai_results = _brave_search(
-            f"AI artificial intelligence positive impact breakthrough {today}",
-            count=10,
-            freshness="pw",
+        ai_results = _tavily_search(
+            "AI artificial intelligence positive impact healthcare climate accessibility",
+            max_results=10,
+            days=7,
         )
 
         combined = (
