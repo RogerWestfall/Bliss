@@ -68,6 +68,7 @@ def _tavily_search(
         "search_depth": "basic",
         "max_results": max_results,
         "days": days,
+        "exclude_domains": _EXCLUDED_DOMAINS,
     }
     if include_domains:
         payload["include_domains"] = include_domains
@@ -139,20 +140,47 @@ def fetch_quote() -> dict:
         return _FALLBACK_QUOTE
 
 
-# ── News (Tavily search + Haiku summarization) ───────────────────────────────
+# ── News sources ─────────────────────────────────────────────────────────────
+#
+# PREFERRED — quality sources to pull from for each category.
+# EXCLUDED  — never surface these (paywalls, low quality, etc.).
 
 _MAINSTREAM_DOMAINS = [
-    "bbc.com", "theguardian.com", "reuters.com", "apnews.com",
-    "npr.org", "nytimes.com", "washingtonpost.com",
+    "bbc.com",           # free
+    "theguardian.com",   # free
+    "reuters.com",       # free
+    "apnews.com",        # free
+    "npr.org",           # free
+    "nytimes.com",       # subscription (user has access)
 ]
+
 _POSITIVE_DOMAINS = [
-    "goodnewsnetwork.org", "positive.news",
-    "reasonstobecheerful.world", "upworthy.com",
+    "goodnewsnetwork.org",
+    "positive.news",
+    "reasonstobecheerful.world",
+    "upworthy.com",
 ]
+
 _AI_DOMAINS = [
-    "technologyreview.com", "wired.com", "nature.com", "newscientist.com",
-    "scientificamerican.com", "npr.org", "bbc.com", "theguardian.com",
-    "reuters.com", "apnews.com",
+    "technologyreview.com",  # MIT Tech Review
+    "wired.com",
+    "nature.com",
+    "newscientist.com",
+    "scientificamerican.com",
+    "npr.org",
+    "bbc.com",
+    "theguardian.com",
+    "reuters.com",
+    "apnews.com",
+]
+
+# Domains to exclude from all searches (paywalls, etc.)
+_EXCLUDED_DOMAINS = [
+    "washingtonpost.com",  # paywall
+    "wsj.com",             # paywall
+    "ft.com",              # paywall
+    "bloomberg.com",       # paywall
+    "economist.com",       # paywall
 ]
 
 _FALLBACK_GOOD_NEWS = {
