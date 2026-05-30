@@ -327,7 +327,11 @@ def fetch_news() -> tuple[dict, dict, dict]:
             include_domains=_NYC_DOMAINS,
         ))
 
-        instruction = _NEWS_INSTRUCTION_TEMPLATE.format(today=today, cutoff=cutoff)
+        instruction = (
+            _NEWS_INSTRUCTION_TEMPLATE
+            .replace("{today}", today)
+            .replace("{cutoff}", cutoff)
+        )
 
         combined = (
             f"TODAY: {today}\n\n"
