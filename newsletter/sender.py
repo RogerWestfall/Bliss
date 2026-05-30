@@ -14,13 +14,14 @@ from newsletter.config import (
 logger = logging.getLogger(__name__)
 
 
-def send(html: str) -> None:
+def send(html: str, edition: str = "") -> None:
     if not RECIPIENTS:
         raise ValueError(
             "No recipients configured. Set NEWSLETTER_RECIPIENTS in your .env file."
         )
 
-    subject = f"Bliss — {datetime.now().strftime('%B %d, %Y')}"
+    label = f" {edition.capitalize()}" if edition else ""
+    subject = f"Bliss{label} — {datetime.now().strftime('%B %d, %Y')}"
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject

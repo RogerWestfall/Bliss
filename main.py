@@ -53,7 +53,7 @@ _MOCK = {
 }
 
 
-def main(preview: bool = False, output: str | None = None, mock: bool = False) -> None:
+def main(preview: bool = False, output: str | None = None, mock: bool = False, edition: str = "") -> None:
     from newsletter.renderer import render
     from newsletter.sender import send
 
@@ -79,7 +79,7 @@ def main(preview: bool = False, output: str | None = None, mock: bool = False) -
 
     if not preview:
         logger.info("Sending newsletter...")
-        send(html)
+        send(html, edition=edition)
         logger.info("Done.")
     else:
         logger.info("Preview mode — email not sent.")
@@ -90,9 +90,10 @@ if __name__ == "__main__":
     parser.add_argument("--preview", action="store_true", help="Render but do not send.")
     parser.add_argument("--output", metavar="FILE", help="Save rendered HTML to a file.")
     parser.add_argument("--mock", action="store_true", help="Use sample content (no feeds needed).")
+    parser.add_argument("--edition", metavar="EDITION", default="", help="Edition label, e.g. 'morning' or 'evening'.")
     args = parser.parse_args()
     try:
-        main(preview=args.preview, output=args.output, mock=args.mock)
+        main(preview=args.preview, output=args.output, mock=args.mock, edition=args.edition)
     except Exception as exc:
         logger.error("Fatal: %s", exc, exc_info=True)
         sys.exit(1)

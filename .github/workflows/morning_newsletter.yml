@@ -1,8 +1,7 @@
-name: Send Bliss Daily Newsletter
+name: Bliss Morning Edition
 
 on:
   schedule:
-    # 8:00 AM UTC every day
     - cron: "0 8 * * *"
   workflow_dispatch:
     inputs:
@@ -44,9 +43,9 @@ jobs:
           NEWSLETTER_RECIPIENTS: ${{ secrets.NEWSLETTER_RECIPIENTS }}
         run: |
           if [ "${{ github.event.inputs.preview }}" = "true" ]; then
-            python main.py --preview --output newsletter_preview.html
+            python main.py --edition morning --preview --output newsletter_preview.html
           else
-            python main.py
+            python main.py --edition morning
           fi
 
       - name: Upload HTML preview
