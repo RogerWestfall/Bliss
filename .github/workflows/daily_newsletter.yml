@@ -1,0 +1,59 @@
+name: Send Bliss Daily Newsletter
+
+on:
+  schedule:
+    # 9:00 AM UTC daily (adjust to your timezone)
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: "Preview only (don't send email)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  send-newsletter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send newsletter
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SENDER_NAME: ${{ secrets.SENDER_NAME }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          NEWSLETTER_RECIPIENTS: ${{ secrets.NEWSLETTER_RECIPIENTS }}
+        run: |
+          if [ "${{ github.event.inputs.preview }}" = "true" ]; then
+            python main.py --preview --output newsletter_preview.html
+          else
+            python main.py
+          fi
+
+      - name: Upload HTML preview
+        if: github.event.inputs.preview == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: newsletter-preview
+          path: newsletter_preview.html
+          retention-days: 7
