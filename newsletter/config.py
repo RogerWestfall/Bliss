@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT") or "587")
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
