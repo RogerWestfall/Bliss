@@ -14,7 +14,7 @@ from newsletter.config import ANTHROPIC_API_KEY
 logger = logging.getLogger(__name__)
 
 _HEADERS = {"User-Agent": "BlissNewsletter/2.0 (rogerlwestfall@gmail.com)"}
-_MODEL = "claude-sonnet-4-6"
+_MODEL = "claude-haiku-4-5-20251001"
 _client_instance = None
 
 
