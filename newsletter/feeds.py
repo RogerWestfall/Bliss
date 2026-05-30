@@ -144,16 +144,23 @@ def _parse_feed(url: str) -> list[dict]:
     return entries
 
 
-def _first_match(feeds: list[str], keywords: list[str] | None = None) -> dict | None:
-    """Return the first entry across feeds that matches optional keywords."""
+def _top_matches(feeds: list[str], n: int, keywords: list[str] | None = None) -> list[dict]:
+    """Return up to n deduplicated entries across feeds matching optional keywords."""
+    results = []
+    seen = set()
     for url in feeds:
         for entry in _parse_feed(url):
+            if entry["link"] in seen:
+                continue
             if keywords:
                 haystack = (entry["headline"] + " " + entry["blurb"]).lower()
                 if not any(kw in haystack for kw in keywords):
                     continue
-            return entry
-    return None
+            results.append(entry)
+            seen.add(entry["link"])
+            if len(results) >= n:
+                return results
+    return results
 
 
 # ── Good News ─────────────────────────────────────────────────────────────────
@@ -179,7 +186,12 @@ _FALLBACK_GOOD_NEWS = {
 
 
 def fetch_good_news() -> dict:
-    return _first_match(_GOOD_NEWS_FEEDS) or _FALLBACK_GOOD_NEWS
+    entries = _top_matches(_GOOD_NEWS_FEEDS, 4)
+    if not entries:
+        return {**_FALLBACK_GOOD_NEWS, "more": []}
+    main = entries[0]
+    main["more"] = [{"headline": e["headline"], "link": e["link"]} for e in entries[1:]]
+    return main
 
 
 # ── Impactful AI ──────────────────────────────────────────────────────────────
@@ -211,7 +223,18 @@ _FALLBACK_AI = {
 
 
 def fetch_ai_impact() -> dict:
-    entry = _first_match(_AI_FEEDS, keywords=_AI_POSITIVE_KEYWORDS)
-    if not entry:
-        entry = _first_match(_AI_FEEDS)
-    return entry or _FALLBACK_AI
+    entries = _top_matches(_AI_FEEDS, 4, keywords=_AI_POSITIVE_KEYWORDS)
+    if len(entries) < 4:
+        # Top up with any AI entries if keyword filter didn't return enough
+        seen = {e["link"] for e in entries}
+        for e in _top_matches(_AI_FEEDS, 4):
+            if e["link"] not in seen:
+                entries.append(e)
+                seen.add(e["link"])
+            if len(entries) >= 4:
+                break
+    if not entries:
+        return {**_FALLBACK_AI, "more": []}
+    main = entries[0]
+    main["more"] = [{"headline": e["headline"], "link": e["link"]} for e in entries[1:4]]
+    return main

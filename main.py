@@ -28,6 +28,11 @@ _MOCK = {
         ),
         "link": "https://www.goodnewsnetwork.org",
         "image": "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=600&q=80",
+        "more": [
+            {"headline": "Teen Raises $200,000 to Build Libraries in Rural Communities", "link": "https://www.goodnewsnetwork.org"},
+            {"headline": "City Converts Abandoned Lots Into Community Gardens", "link": "https://www.positive.news"},
+            {"headline": "Scientists Discover Coral Reefs Recovering Faster Than Expected", "link": "https://www.goodnewsnetwork.org"},
+        ],
     },
     "ai_impact": {
         "headline": "AI System Detects Early-Stage Pancreatic Cancer With 90% Accuracy",
@@ -39,6 +44,11 @@ _MOCK = {
         ),
         "link": "https://www.technologyreview.com",
         "image": "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&q=80",
+        "more": [
+            {"headline": "AI Tool Helps Farmers Predict Crop Disease Weeks in Advance", "link": "https://www.technologyreview.com"},
+            {"headline": "New Model Cuts Time to Develop Clean Energy Materials by 70%", "link": "https://www.technologyreview.com"},
+            {"headline": "AI-Powered App Gives Blind Users Real-Time Scene Descriptions", "link": "https://www.technologyreview.com"},
+        ],
     },
 }
 
