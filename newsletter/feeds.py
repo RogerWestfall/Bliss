@@ -231,7 +231,7 @@ _JSON_SCHEMA = (
     '{"headline":"...","link":"https://..."},'
     '{"headline":"...","link":"https://..."},'
     '{"headline":"...","link":"https://..."}'
-    "]}" 
+    "]}"
 )
 
 
@@ -294,13 +294,24 @@ def fetch_news() -> tuple[dict, dict, dict]:
 
         logger.info("Converting combined digest (%d chars) to JSON...", len(combined))
         text = _to_json(combined, _JSON_SCHEMA)
-        logger.info("JSON response (%d chars): %s...", len(text), text[:200])
+        logger.info("JSON response (%d chars): %s...", len(text), text[:400])
         data = _extract_json(text)
-        good_news = _shape_stories(data.get("good_news", [])) or _FALLBACK_GOOD_NEWS
-        ai_impact = _shape_stories(data.get("ai_impact", [])) or _FALLBACK_AI
-        ny_news = _shape_stories(data.get("ny_news", [])) or _FALLBACK_NY
-        logger.info("fetch_news succeeded")
-        return good_news, ai_impact, ny_news
+
+        for section in ("good_news", "ai_impact", "ny_news"):
+            stories = data.get(section, [])
+            logger.info("%s: %d stories raw; links=%s", section, len(stories),
+                        [s.get("link", "")[:60] for s in stories])
+
+        good_news = _shape_stories(data.get("good_news", []))
+        ai_impact = _shape_stories(data.get("ai_impact", []))
+        ny_news = _shape_stories(data.get("ny_news", []))
+        logger.info("shaped — good=%s ai=%s ny=%s",
+                    bool(good_news), bool(ai_impact), bool(ny_news))
+        return (
+            good_news or _FALLBACK_GOOD_NEWS,
+            ai_impact or _FALLBACK_AI,
+            ny_news or _FALLBACK_NY,
+        )
     except Exception:
         logger.exception("fetch_news failed — using fallbacks")
         return _FALLBACK_GOOD_NEWS, _FALLBACK_AI, _FALLBACK_NY
