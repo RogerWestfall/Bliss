@@ -55,59 +55,36 @@ def _og_image(url: str) -> str:
     return ""
 
 
-def _web_search(prompt: str) -> str:
-    """Search the web with Claude and return a plain-prose digest.
-
-    web_search_20250305 is server-side: Claude searches up to max_uses times
-    within one call. We ask for PROSE (not JSON) here because models reliably
-    write text after searching, but often emit no text when also forced into
-    strict JSON. A second, tool-free call converts the prose to JSON.
-
-    stop_reason="pause_turn" means a long search needs continuation; we replay
-    the content. We cap continuations to keep the search budget (and cost)
-    bounded — each request carries its own max_uses.
-    """
-    messages = [{"role": "user", "content": prompt}]
-    text = ""
-
-    for i in range(2):
-        resp = _client().messages.create(
-            model=_MODEL,
-            max_tokens=3072,
-            tools=[{
-                "type": "web_search_20250305",
-                "name": "web_search",
-                "max_uses": 3,
-            }],
-            messages=messages,
-        )
-
-        block_types = [getattr(b, "type", "?") for b in resp.content]
-        logger.info("Search round %d | stop_reason=%s | blocks=%s", i + 1, resp.stop_reason, block_types)
-
-        text = "".join(
-            getattr(b, "text", "") or ""
-            for b in resp.content
-            if getattr(b, "type", "") == "text"
-        )
-
-        if resp.stop_reason == "pause_turn" and i == 0:
-            messages.append({"role": "assistant", "content": resp.content})
-            continue
-
-        break
-
-    logger.info("Search digest (%d chars): %s...", len(text), text[:160])
+def _search_section(prompt: str) -> str:
+    """One focused web search for one newsletter section. Returns prose."""
+    resp = _client().messages.create(
+        model=_MODEL,
+        max_tokens=1500,
+        tools=[{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 3,
+        }],
+        messages=[{"role": "user", "content": prompt}],
+    )
+    block_types = [getattr(b, "type", "?") for b in resp.content]
+    logger.info("stop_reason=%s | blocks=%s", resp.stop_reason, block_types)
+    text = "".join(
+        getattr(b, "text", "") or ""
+        for b in resp.content
+        if getattr(b, "type", "") == "text"
+    )
+    logger.info("Digest (%d chars): %s...", len(text), text[:120])
     return text
 
 
-def _to_json(digest: str, schema_instruction: str) -> str:
-    """Convert a prose digest into strict JSON using a cheap, tool-free call."""
+def _to_json(digest: str, schema: str) -> str:
+    """Convert a prose digest into strict JSON — no tools, cheap call."""
     resp = _client().messages.create(
         model=_MODEL,
         max_tokens=3072,
-        system="You convert news digests into valid JSON. Output ONLY JSON, no markdown, no commentary.",
-        messages=[{"role": "user", "content": f"{schema_instruction}\n\nDIGEST:\n{digest}"}],
+        system="Convert the news digest into valid JSON exactly matching the schema. Output ONLY JSON.",
+        messages=[{"role": "user", "content": f"{schema}\n\nDIGEST:\n{digest}"}],
     )
     return resp.content[0].text
 
@@ -204,10 +181,25 @@ _FALLBACK_NY = {
     "more": [],
 }
 
+_SECTION_RULES = (
+    "Write a digest of exactly 4 stories. Rules:\n"
+    "- Each story must be a specific, standalone article — not a roundup, "
+    "digest, listicle, or weekly summary ('good news this week', '5 things', etc.).\n"
+    "- Each story must come from a different website.\n"
+    "- Prefer recent stories (last 5 days). Skip anything paywalled "
+    "(WSJ, Bloomberg, FT, Economist, Washington Post).\n"
+    "For each story write: headline, exact article URL, and date. "
+    "For story #1 also write a warm 2-3 sentence blurb.\n"
+    "Format:\n"
+    "1. [HEADLINE] | [URL] | [DATE]\n   BLURB: ...\n"
+    "2. [HEADLINE] | [URL] | [DATE]\n"
+    "3. [HEADLINE] | [URL] | [DATE]\n"
+    "4. [HEADLINE] | [URL] | [DATE]\n"
+)
+
 _JSON_SCHEMA = (
-    "Convert the digest below into this exact JSON shape. "
-    "Each section has 4 stories; only story #1 of each has a blurb. "
-    "Use the real article URLs from the digest for every link.\n"
+    "Convert the three section digests below into this exact JSON. "
+    "Copy the real headlines and URLs directly — do not invent or paraphrase them.\n"
     '{"good_news":['
     '{"headline":"...","blurb":"...","link":"https://..."},'
     '{"headline":"...","link":"https://..."},'
@@ -228,44 +220,49 @@ _JSON_SCHEMA = (
 
 
 def fetch_news() -> tuple[dict, dict, dict]:
-    """Search the web (prose) then format to JSON in a second cheap call."""
+    """Three focused search calls (one per section) + one JSON formatting call."""
     today = date.today().strftime("%B %d, %Y")
-    cutoff = (date.today() - timedelta(days=2)).strftime("%B %d, %Y")
 
-    search_prompt = (
-        f"You are the editor of Bliss, a warm daily newsletter. Today is {today}. "
-        f"Do exactly 3 web searches — one per section — and find stories published on or after {cutoff}.\n\n"
+    good_prompt = (
+        f"Today is {today}. Search for 4 uplifting positive news stories from the last 5 days.\n"
+        "Look for: acts of kindness, scientific breakthroughs, environmental wins, community achievements.\n"
+        "Prefer: BBC, Guardian, Reuters, AP, NPR, NYT, GoodNewsNetwork, Positive.news.\n\n"
+        + _SECTION_RULES
+    )
 
-        "RULES for all sections:\n"
-        "- Find 4 stories per section, each from a DIFFERENT website. No domain twice in a section.\n"
-        "- Each story must be a specific, standalone article about ONE thing. "
-        "Skip roundups, digests, listicles, weekly summaries ('good news this week', '5 things to know').\n"
-        "- No story may repeat across sections. If outlets cover the same event, pick one.\n"
-        "- Exclude paywalled sources: WSJ, Bloomberg, FT, Economist, Washington Post.\n\n"
+    ai_prompt = (
+        f"Today is {today}. Search for 4 stories from the last 5 days about AI creating genuine positive impact.\n"
+        "Look for: healthcare breakthroughs, climate solutions, accessibility tools, "
+        "education improvements, humanitarian aid. Real demonstrated results only — no hype.\n"
+        "Prefer: MIT Tech Review, Wired, Nature, New Scientist, Scientific American, NPR, BBC.\n\n"
+        + _SECTION_RULES
+    )
 
-        "SEARCH 1 — GOOD NEWS: uplifting news from the last 2 days — kindness, scientific "
-        "breakthroughs, environmental wins, community achievements. "
-        "Prefer BBC, Guardian, Reuters, AP, NPR, NYT, GoodNewsNetwork, Positive.news.\n\n"
-
-        "SEARCH 2 — IMPACTFUL AI: AI for genuine positive impact in the last 2 days — healthcare, "
-        "climate, accessibility, education, humanitarian aid. Real results, no hype. "
-        "Prefer MIT Tech Review, Wired, Nature, New Scientist, Scientific American.\n\n"
-
-        "SEARCH 3 — NEW YORK: Brooklyn and Manhattan news from the last 2 days — community stories, "
-        "local culture, Bed-Stuy and Bushwick, street art, skateboarding, sports wins (Mets, Yankees, "
-        "Knicks, Nets). At most 1 sports story; the rest community or culture. No events calendars or "
-        "tourist guides. Prefer Gothamist, Brooklyn Paper, Bklyner, Timeout NY news, Hyperallergic, Curbed NY.\n\n"
-
-        "After searching, write a clear digest. For each section list its 4 stories: the full headline, "
-        "the exact article URL, and the publication date. For story #1 in each section, also write a "
-        "warm 2-3 sentence blurb. Organize under headings: GOOD NEWS, IMPACTFUL AI, NEW YORK."
+    ny_prompt = (
+        f"Today is {today}. Search for 4 Brooklyn and Manhattan news stories from the last 5 days.\n"
+        "Look for: community stories, local culture, neighborhood news in Bed-Stuy and Bushwick, "
+        "street art, skateboarding, parks, sports wins (Mets, Yankees, Knicks, Nets).\n"
+        "Pick at most 1 sports story — the rest must be community, culture, or neighborhood news.\n"
+        "Prefer: Gothamist, Brooklyn Paper, Bklyner, Timeout NY, Hyperallergic, Curbed NY, NY1.\n"
+        "No events calendars, tourist guides, or generic 'things to do' articles.\n\n"
+        + _SECTION_RULES
     )
 
     try:
-        digest = _web_search(search_prompt)
-        if not digest.strip():
-            raise ValueError("empty search digest")
-        text = _to_json(digest, _JSON_SCHEMA)
+        logger.info("Searching: Good News...")
+        good_digest = _search_section(good_prompt)
+        logger.info("Searching: AI Impact...")
+        ai_digest = _search_section(ai_prompt)
+        logger.info("Searching: New York...")
+        ny_digest = _search_section(ny_prompt)
+
+        combined = (
+            "=== GOOD NEWS ===\n" + good_digest +
+            "\n\n=== IMPACTFUL AI ===\n" + ai_digest +
+            "\n\n=== NEW YORK ===\n" + ny_digest
+        )
+
+        text = _to_json(combined, _JSON_SCHEMA)
         data = _extract_json(text)
         good_news = _shape_stories(data.get("good_news", [])) or _FALLBACK_GOOD_NEWS
         ai_impact = _shape_stories(data.get("ai_impact", [])) or _FALLBACK_AI
