@@ -85,9 +85,9 @@ def main(preview: bool = False, output: str | None = None, mock: bool = False, e
         quote = fetch_quote()
         logger.info('Quote: "%s" — %s', quote["quote"][:55], quote["author"])
         good_news, ai_impact, ny_news = fetch_news()
-        logger.info("Good News: %s", good_news["headline"])
-        logger.info("Impactful AI: %s", ai_impact["headline"])
-        logger.info("New York: %s", ny_news["headline"])
+        logger.info("Good News: %s", good_news["headline"] if good_news else "OMITTED")
+        logger.info("Impactful AI: %s", ai_impact["headline"] if ai_impact else "OMITTED")
+        logger.info("New York: %s", ny_news["headline"] if ny_news else "OMITTED")
 
     html = render(quote, good_news, ai_impact, ny_news)
 

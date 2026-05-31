@@ -16,7 +16,6 @@ _HEADERS = {"User-Agent": "BlissNewsletter/2.0 (rogerlwestfall@gmail.com)"}
 _MODEL = "claude-haiku-4-5-20251001"
 _client_instance = None
 
-# Matches any https:// URL, stops at whitespace or common trailing punctuation
 _URL_RE = re.compile(r'https?://[^\s\|<>"()\[\]{}]+')
 
 
@@ -31,13 +30,12 @@ def _parse_section_digest(text: str) -> list[dict]:
     """Extract up to 4 stories from a section digest.
 
     Handles formats the search model might use:
-      Labeled:  1. HEADLINE: ...\n   URL: https://...\n   BLURB: ...
+      Labeled:  1. HEADLINE: ...\\n   URL: https://...\\n   BLURB: ...
       Pipe:     1. Headline | https://... | date
       Inline:   1. **Headline** - https://...
-      Colon:    1: Headline\n   URL: https://...
+      Colon:    1: Headline\\n   URL: https://...
     """
     stories = []
-    # Split on newline followed by a story number (1–4) with any delimiter
     blocks = re.split(r'\n(?=\s*[1-4][.):\s])', '\n' + text.strip())
 
     for block in blocks:
@@ -45,8 +43,6 @@ def _parse_section_digest(text: str) -> list[dict]:
         if not re.match(r'[1-4][.):\s]', block):
             continue
 
-        # ── URL ─────────────────────────────────────────────────────────────
-        # Prefer the URL: labeled line; fall back to any https:// in the block
         url = ""
         url_label = re.search(r'\bURL:\s*(https?://\S+)', block, re.IGNORECASE)
         if url_label:
@@ -59,22 +55,19 @@ def _parse_section_digest(text: str) -> list[dict]:
         if not url:
             continue
 
-        # ── Headline ─────────────────────────────────────────────────────────
         headline = ""
         h_label = re.search(r'HEADLINE:\s*(.+?)(?:\n|$)', block, re.IGNORECASE)
         if h_label:
             headline = h_label.group(1).strip()
         else:
-            # Find text before the URL; in pipe format the headline is before |
             before_url = block[:block.index(url)].strip()
             before_url = re.sub(r'^[1-4][.):\s]\s*', '', before_url)
             headline = before_url.split('|')[0].strip().rstrip(':')
 
-        headline = re.sub(r'\*+', '', headline).strip()  # strip markdown bold
+        headline = re.sub(r'\*+', '', headline).strip()
         if not headline or len(headline) < 5:
             continue
 
-        # ── Blurb (story #1 only) ────────────────────────────────────────────
         blurb = ""
         b_m = re.search(
             r'BLURB:\s*(.+?)(?=\n\s*[1-4][.)]|\Z)',
@@ -143,15 +136,28 @@ def _shape_stories(stories: list) -> dict | None:
     stories = _dedup_by_domain(stories)
     if not stories:
         return None
-    main = stories[0]
+
+    # Use story #1 as featured; try each story's URL for an og:image
+    featured_image = ""
+    featured_idx = 0
+    for i, s in enumerate(stories):
+        img = _og_image(s.get("link", ""))
+        if img:
+            featured_image = img
+            featured_idx = i
+            break
+
+    main = stories[featured_idx]
+    rest = [s for i, s in enumerate(stories) if i != featured_idx]
+
     return {
         "headline": main.get("headline", ""),
         "blurb": main.get("blurb", ""),
         "link": main.get("link", ""),
-        "image": _og_image(main.get("link", "")),
+        "image": featured_image,
         "more": [
             {"headline": s.get("headline", ""), "link": s.get("link", "")}
-            for s in stories[1:]
+            for s in rest
         ],
     }
 
@@ -164,7 +170,7 @@ def _search_section(prompt: str) -> str:
         tools=[{
             "type": "web_search_20250305",
             "name": "web_search",
-            "max_uses": 4,
+            "max_uses": 3,
         }],
         messages=[{"role": "user", "content": prompt}],
     )
@@ -202,96 +208,63 @@ def fetch_quote() -> dict:
 
 # ── News ──────────────────────────────────────────────────────────────────────
 
-_FALLBACK_GOOD_NEWS = {
-    "headline": "Volunteers Around the World Continue to Make a Difference",
-    "blurb": (
-        "Every day, millions of people quietly dedicate their time to making their "
-        "communities better — planting trees, teaching skills, and lifting each other up."
-    ),
-    "link": "",
-    "image": "",
-    "more": [],
-}
-
-_FALLBACK_AI = {
-    "headline": "AI Is Accelerating Breakthroughs Across Science and Medicine",
-    "blurb": (
-        "From mapping proteins to detecting disease earlier than ever, AI is transforming "
-        "how researchers tackle humanity's hardest problems."
-    ),
-    "link": "",
-    "image": "",
-    "more": [],
-}
-
-_FALLBACK_NY = {
-    "headline": "Brooklyn and Manhattan: Always Something to Discover",
-    "blurb": (
-        "From the skate parks of Bushwick to the courts of Bed-Stuy, New York City "
-        "keeps delivering moments worth stepping outside for."
-    ),
-    "link": "",
-    "image": "",
-    "more": [],
-}
-
 _SECTION_RULES = (
-    "Find exactly 4 stories and output them in this exact format:\n\n"
+    "Find up to 4 stories published in the last 24 hours and output them in this exact format:\n\n"
     "1. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n"
+    "   DATE: [publication date and time]\n"
     "   BLURB: [warm 2-3 sentence description]\n\n"
     "2. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n\n"
+    "   DATE: [publication date and time]\n\n"
     "3. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n\n"
+    "   DATE: [publication date and time]\n\n"
     "4. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n\n"
+    "   DATE: [publication date and time]\n\n"
     "Rules:\n"
+    "- Only include articles published in the last 24 hours. Do not include older articles.\n"
     "- Each story must be a specific, standalone article — NOT a roundup, digest, "
     "'good news of the week', or aggregator post listing multiple items.\n"
     "- Each story from a different website.\n"
-    "- Prefer articles from the last 7 days; older is fine if nothing recent.\n"
-    "- Skip WSJ, Bloomberg, FT, Economist, Washington Post.\n"
-    "- Include the best available stories — do not refuse or leave fields blank.\n"
+    "- Prefer premium outlets (New York Times, Guardian, BBC, NPR, Reuters, AP, Wired, Nature) "
+    "but include any reputable source if premium outlets don't have qualifying stories.\n"
+    "- If fewer than 4 qualifying stories exist, output only what you find — do not pad with older stories.\n"
     "- Every URL must start with https:// and link directly to the article.\n"
 )
 
 
-def fetch_news() -> tuple[dict, dict, dict]:
-    """Three focused search calls; stories extracted directly by Python regex."""
+def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
+    """Three focused search calls; returns None for any section with no recent stories."""
     today = date.today()
     today_str = today.strftime("%B %d, %Y")
 
     good_prompt = (
-        f"Today is {today_str}. Find 4 uplifting, positive news stories from the past week.\n"
+        f"Today is {today_str}. Search for uplifting, positive news stories published in the last 24 hours.\n"
         "Topics: medical breakthroughs, environmental wins, acts of kindness, "
         "community achievements, wildlife recoveries, humanitarian milestones.\n"
-        "Search any reputable news source — BBC, Guardian, NYT, NPR, Reuters, AP, "
-        "CBC, The Independent, Positive News are all great.\n\n"
+        "Prioritize: New York Times, Guardian, BBC, NPR, Reuters, AP, CBC, The Independent.\n\n"
         + _SECTION_RULES
     )
 
     ai_prompt = (
-        f"Today is {today_str}. Find 4 recent stories about AI and technology "
-        "making a positive difference.\n"
-        "Topics: AI in healthcare, climate tech, accessibility tools, scientific "
-        "breakthroughs, new beneficial AI applications, or any positive tech news.\n"
-        "Search MIT Technology Review, Wired, Nature, New Scientist, Scientific American, "
-        "NPR, BBC, The Verge, STAT News, TechCrunch, Ars Technica, or any reputable outlet.\n\n"
+        f"Today is {today_str}. Search for stories about AI or technology making a positive "
+        "difference, published in the last 24 hours.\n"
+        "Topics: AI in healthcare, climate tech, accessibility tools, scientific breakthroughs, "
+        "beneficial new AI applications.\n"
+        "Prioritize: MIT Technology Review, Wired, Nature, New Scientist, Scientific American, "
+        "NPR, BBC, The Verge, STAT News.\n\n"
         + _SECTION_RULES
     )
 
     ny_prompt = (
-        f"Today is {today_str}. Find 4 recent news stories about New York City — "
+        f"Today is {today_str}. Search for New York City news stories published in the last 24 hours — "
         "especially Brooklyn (Bed-Stuy, Bushwick, Crown Heights) or Manhattan.\n"
-        "Topics: neighborhood events, street art, local sports results (Mets, Yankees, "
-        "Knicks, Nets), community openings, parks, culture, food scene. At most 1 sports story.\n"
-        "Search Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, Curbed NY, NY1, "
-        "Timeout NY, New York Times metro section, Silive, amNY, or any NYC local outlet.\n"
+        "Topics: neighborhood life, street art, sports results (Mets, Yankees, Knicks, Nets), "
+        "community openings, parks, culture, food. At most 1 sports story.\n"
+        "Prioritize: New York Times metro, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
+        "Curbed NY, NY1, Timeout NY, amNY.\n"
         "Only include things that already happened — no event previews.\n\n"
         + _SECTION_RULES
     )
@@ -315,16 +288,16 @@ def fetch_news() -> tuple[dict, dict, dict]:
         logger.info("New York: %d parsed; links=%s",
                     len(ny_stories), [s.get("link", "")[:70] for s in ny_stories])
 
-        good_news = _shape_stories(good_stories) or _FALLBACK_GOOD_NEWS
-        ai_impact = _shape_stories(ai_stories) or _FALLBACK_AI
-        ny_news = _shape_stories(ny_stories) or _FALLBACK_NY
+        good_news = _shape_stories(good_stories)
+        ai_impact = _shape_stories(ai_stories)
+        ny_news = _shape_stories(ny_stories)
 
-        logger.info("Headlines — good: %s | ai: %s | ny: %s",
-                    good_news["headline"][:50],
-                    ai_impact["headline"][:50],
-                    ny_news["headline"][:50])
+        logger.info("Sections — good: %s | ai: %s | ny: %s",
+                    good_news["headline"][:50] if good_news else "OMITTED",
+                    ai_impact["headline"][:50] if ai_impact else "OMITTED",
+                    ny_news["headline"][:50] if ny_news else "OMITTED")
         return good_news, ai_impact, ny_news
 
     except Exception:
-        logger.exception("fetch_news failed — using fallbacks")
-        return _FALLBACK_GOOD_NEWS, _FALLBACK_AI, _FALLBACK_NY
+        logger.exception("fetch_news failed")
+        return None, None, None
