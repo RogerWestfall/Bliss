@@ -108,7 +108,27 @@ def _web_search(prompt: str, system: str) -> str:
     return text
 
 
+def _dedup_by_domain(stories: list) -> list:
+    """Keep only the first story from each domain."""
+    seen = set()
+    out = []
+    for s in stories:
+        url = s.get("link", "")
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc.removeprefix("www.")
+        except Exception:
+            domain = url
+        if domain and domain not in seen:
+            seen.add(domain)
+            out.append(s)
+        elif not domain:
+            out.append(s)
+    return out
+
+
 def _shape_stories(stories: list) -> dict | None:
+    stories = _dedup_by_domain(stories)
     if not stories:
         return None
     main = stories[0]
@@ -195,9 +215,14 @@ def fetch_news() -> tuple[dict, dict, dict]:
     prompt = (
         f"Today is {today}. Do exactly 3 web searches — one per section below — "
         f"and find stories published on or after {cutoff}. "
-        "Each story must be a real, specific news article (not a listicle, calendar, or roundup). "
-        "Do not repeat the same story across sections. "
-        "If multiple outlets covered the same event, pick the single best source.\n\n"
+        "Follow these rules for ALL sections:\n"
+        "- Each of the 4 stories must come from a DIFFERENT website/domain. No domain may appear twice in the same section.\n"
+        "- Each story must be a specific, standalone news article about one thing. "
+        "SKIP any article that is a roundup, digest, listicle, or weekly summary "
+        "(e.g. 'good news this week', 'best stories of May', '5 things to know'). "
+        "These articles contain multiple stories — always skip them and find individual articles instead.\n"
+        "- Do not repeat the same story across sections. "
+        "If multiple outlets covered the same event, pick the single best source only.\n\n"
 
         "SEARCH 1 — GOOD NEWS: Search for uplifting news from the last 2 days. "
         "Look for acts of kindness, scientific breakthroughs, environmental wins, community achievements. "
@@ -214,7 +239,8 @@ def fetch_news() -> tuple[dict, dict, dict]:
         "Prefer Gothamist, Brooklyn Paper, Bklyner, Timeout NY news, Hyperallergic, Curbed NY. "
         "No events calendars, no tourist guides.\n\n"
 
-        "For each section return 4 stories. Write a warm 2-3 sentence blurb for story #1 only. "
+        "For each section return 4 stories from 4 different domains. "
+        "Write a warm 2-3 sentence blurb for story #1 only. "
         "Exclude paywalled sources: WSJ, Bloomberg, FT, Economist, Washington Post.\n\n"
 
         "Reply ONLY with this JSON:\n"
