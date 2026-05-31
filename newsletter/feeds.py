@@ -30,17 +30,19 @@ def _client() -> anthropic.Anthropic:
 def _parse_section_digest(text: str) -> list[dict]:
     """Extract up to 4 stories from a section digest.
 
-    Handles two formats the search model might use:
+    Handles formats the search model might use:
       Labeled:  1. HEADLINE: ...\n   URL: https://...\n   BLURB: ...
       Pipe:     1. Headline | https://... | date
+      Inline:   1. **Headline** - https://...
+      Colon:    1: Headline\n   URL: https://...
     """
     stories = []
-    # Split on newline followed by a story number (1–4)
-    blocks = re.split(r'\n(?=\s*[1-4][.)]\s)', '\n' + text.strip())
+    # Split on newline followed by a story number (1–4) with any delimiter
+    blocks = re.split(r'\n(?=\s*[1-4][.):\s])', '\n' + text.strip())
 
     for block in blocks:
         block = block.strip()
-        if not re.match(r'[1-4][.)]', block):
+        if not re.match(r'[1-4][.):\s]', block):
             continue
 
         # ── URL ───────────────────────────────────────────────────────────────────
@@ -65,7 +67,7 @@ def _parse_section_digest(text: str) -> list[dict]:
         else:
             # Find text before the URL; in pipe format the headline is before |
             before_url = block[:block.index(url)].strip()
-            before_url = re.sub(r'^[1-4][.)]\s*', '', before_url)
+            before_url = re.sub(r'^[1-4][.):\s]\s*', '', before_url)
             headline = before_url.split('|')[0].strip().rstrip(':')
 
         headline = re.sub(r'\*+', '', headline).strip()  # strip markdown bold
@@ -158,7 +160,7 @@ def _search_section(prompt: str) -> str:
     """One focused web search call for one newsletter section. Returns prose."""
     resp = _client().messages.create(
         model=_MODEL,
-        max_tokens=1500,
+        max_tokens=2000,
         tools=[{
             "type": "web_search_20250305",
             "name": "web_search",
@@ -249,7 +251,8 @@ _SECTION_RULES = (
     "   URL: [https://full-article-url]\n"
     "   DATE: [publication date]\n\n"
     "Rules:\n"
-    "- Each story must be a specific article (not a roundup, digest, or weekly summary).\n"
+    "- Each story must be a specific, standalone article — NOT a roundup, digest, "
+    "'good news of the week', or aggregator post listing multiple items.\n"
     "- Each story from a different website.\n"
     "- Prefer articles from the last 7 days; older is fine if nothing recent.\n"
     "- Skip WSJ, Bloomberg, FT, Economist, Washington Post.\n"
@@ -273,24 +276,23 @@ def fetch_news() -> tuple[dict, dict, dict]:
     )
 
     ai_prompt = (
-        f"Today is {today_str}. Find 4 recent stories about AI delivering "
-        "real, demonstrated positive impact.\n"
-        "Topics: AI used in healthcare, climate, accessibility, education, or science — "
-        "with actual results, not just product announcements.\n"
-        "Search any reputable tech or science outlet — MIT Technology Review, Wired, "
-        "Nature, New Scientist, Scientific American, NPR, BBC, The Verge, STAT News.\n\n"
+        f"Today is {today_str}. Find 4 recent stories about AI and technology "
+        "making a positive difference.\n"
+        "Topics: AI in healthcare, climate tech, accessibility tools, scientific "
+        "breakthroughs, new beneficial AI applications, or any positive tech news.\n"
+        "Search MIT Technology Review, Wired, Nature, New Scientist, Scientific American, "
+        "NPR, BBC, The Verge, STAT News, TechCrunch, Ars Technica, or any reputable outlet.\n\n"
         + _SECTION_RULES
     )
 
     ny_prompt = (
-        f"Today is {today_str}. Find 4 recent news stories specifically about "
-        "Brooklyn or Manhattan neighborhoods.\n"
-        "Topics: neighborhood life in Bed-Stuy or Bushwick, street art, skateboarding, "
-        "sports results (Mets, Yankees, Knicks, Nets wins), local openings, "
-        "community achievements. At most 1 sports story.\n"
+        f"Today is {today_str}. Find 4 recent news stories about New York City — "
+        "especially Brooklyn (Bed-Stuy, Bushwick, Crown Heights) or Manhattan.\n"
+        "Topics: neighborhood events, street art, local sports results (Mets, Yankees, "
+        "Knicks, Nets), community openings, parks, culture, food scene. At most 1 sports story.\n"
         "Search Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, Curbed NY, NY1, "
-        "Timeout NY, or New York Times metro section.\n"
-        "Skip events-preview articles; only include things that already happened.\n\n"
+        "Timeout NY, New York Times metro section, Silive, amNY, or any NYC local outlet.\n"
+        "Only include things that already happened — no event previews.\n\n"
         + _SECTION_RULES
     )
 
