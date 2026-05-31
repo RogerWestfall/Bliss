@@ -252,8 +252,8 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
     )
 
     ai_prompt = (
-        f"Today is {today_str}. Find news stories from the last 3 days about technology — "
-        "especially AI — that would make someone feel excited or hopeful about the future.\n"
+        f"Today is {today_str}. Find AI technology news stories from the last 3 days "
+        "that would make someone feel excited or hopeful about the future.\n"
         "The story should show technology solving a real problem or opening up new possibilities: "
         "a tool helping people who couldn't be helped before, a research breakthrough that changes "
         "what's possible, a system catching something humans missed, or an application making "
