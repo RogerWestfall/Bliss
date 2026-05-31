@@ -1,15 +1,15 @@
-"""Fetch newsletter content using Brave Search + Claude summarization."""
+"""Fetch newsletter content via Claude web search + Haiku summarization."""
 
 import json
 import logging
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 import anthropic
 import requests
 from lxml import html as lhtml
 
-from newsletter.config import ANTHROPIC_API_KEY, TAVILY_API_KEY
+from newsletter.config import ANTHROPIC_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -55,93 +55,57 @@ def _og_image(url: str) -> str:
     return ""
 
 
-def _tavily_search(
-    query: str,
-    max_results: int = 10,
-    days: int = 3,
-    include_domains: list[str] | None = None,
-    topic: str = "general",
-) -> list[dict]:
-    """Return web results from Tavily Search API."""
-    payload = {
-        "api_key": TAVILY_API_KEY,
-        "query": query,
-        "search_depth": "basic",
-        "max_results": max_results,
-        "days": days,
-        "topic": topic,
-        "exclude_domains": _EXCLUDED_DOMAINS,
-    }
-    if include_domains:
-        payload["include_domains"] = include_domains
-    resp = requests.post(
-        "https://api.tavily.com/search",
-        json=payload,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    results = resp.json().get("results", [])
-    logger.info("Tavily search '%s' → %d results", query, len(results))
-    return results
+def _web_search(prompt: str, system: str) -> str:
+    """Run Claude with web search (max 3 searches) and return the text response."""
+    messages = [{"role": "user", "content": prompt}]
+    text = ""
 
+    for i in range(10):
+        resp = _client().messages.create(
+            model=_MODEL,
+            max_tokens=2048,
+            system=system,
+            tools=[{
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 3,
+            }],
+            messages=messages,
+        )
 
-def _dedup_urls(result_groups: list[list[dict]]) -> list[list[dict]]:
-    """Remove duplicate URLs across multiple result groups, keeping first occurrence."""
-    seen = set()
-    out = []
-    for group in result_groups:
-        fresh = []
-        for r in group:
-            url = (r.get("url") or "").split("?")[0].rstrip("/")
-            if url and url not in seen:
-                seen.add(url)
-                fresh.append(r)
-        out.append(fresh)
-    return out
+        block_types = [getattr(b, "type", "?") for b in resp.content]
+        logger.info("Round %d | stop_reason=%s | blocks=%s", i + 1, resp.stop_reason, block_types)
 
+        text = "".join(
+            getattr(b, "text", "") or ""
+            for b in resp.content
+            if getattr(b, "type", "") == "text"
+        )
+        if text:
+            logger.info("Got text (%d chars): %s...", len(text), text[:120])
 
-def _filter_recent(results: list[dict], days: int = 2) -> list[dict]:
-    """Drop results whose published_date is older than `days` days."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    fresh = []
-    for r in results:
-        raw = r.get("published_date") or ""
-        if not raw:
-            fresh.append(r)
+        if resp.stop_reason == "end_turn":
+            if text:
+                return text
+            logger.warning("Round %d: end_turn with no text, requesting synthesis", i + 1)
+            messages.append({"role": "assistant", "content": resp.content})
+            messages.append({"role": "user", "content": "Now write the JSON response based on your search results."})
             continue
-        try:
-            pub = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            if pub.tzinfo is None:
-                pub = pub.replace(tzinfo=timezone.utc)
-            if pub >= cutoff:
-                fresh.append(r)
-            else:
-                logger.debug("Dropping old result (%s): %s", raw[:10], r.get("title", "")[:60])
-        except (ValueError, TypeError):
-            fresh.append(r)
-    logger.info("After date filter: %d / %d results kept", len(fresh), len(results))
-    return fresh
 
+        if resp.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": resp.content})
+            tool_results = [
+                {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
+                for b in resp.content
+                if getattr(b, "type", "") == "tool_use"
+            ]
+            if tool_results:
+                messages.append({"role": "user", "content": tool_results})
+            continue
 
-def _results_to_text(results: list[dict]) -> str:
-    lines = []
-    for i, r in enumerate(results, 1):
-        pub = (r.get("published_date") or "")[:10] or "date unknown"
-        lines.append(f"{i}. [{pub}] {r.get('title', '')} — {r.get('url', '')}")
-        snippet = r.get("content") or r.get("description", "")
-        if snippet:
-            lines.append(f"   {snippet[:200]}")
-    return "\n".join(lines)
+        break
 
-
-def _summarize(content: str, instruction: str) -> str:
-    """Ask Haiku to pick and write up stories from raw search results."""
-    resp = _client().messages.create(
-        model=_MODEL,
-        max_tokens=2048,
-        messages=[{"role": "user", "content": f"{instruction}\n\n{content}"}],
-    )
-    return resp.content[0].text
+    return text
 
 
 def _shape_stories(stories: list) -> dict | None:
@@ -181,63 +145,7 @@ def fetch_quote() -> dict:
         return _FALLBACK_QUOTE
 
 
-# ── News sources ─────────────────────────────────────────────────────────────
-#
-# PREFERRED — quality sources to pull from for each category.
-# EXCLUDED  — never surface these (paywalls, low quality, etc.).
-
-_MAINSTREAM_DOMAINS = [
-    "bbc.com",           # free
-    "theguardian.com",   # free
-    "reuters.com",       # free
-    "apnews.com",        # free
-    "npr.org",           # free
-    "nytimes.com",       # subscription (user has access)
-]
-
-_POSITIVE_DOMAINS = [
-    "goodnewsnetwork.org",
-    "positive.news",
-    "reasonstobecheerful.world",
-    "upworthy.com",
-]
-
-_AI_DOMAINS = [
-    "technologyreview.com",  # MIT Tech Review
-    "wired.com",
-    "nature.com",
-    "newscientist.com",
-    "scientificamerican.com",
-    "npr.org",
-    "bbc.com",
-    "theguardian.com",
-    "reuters.com",
-    "apnews.com",
-]
-
-_NYC_DOMAINS = [
-    "gothamist.com",        # NYC local news & culture
-    "brooklynpaper.com",    # Brooklyn hyperlocal stories
-    "bklyner.com",          # Bed-Stuy, Crown Heights, neighborhood news
-    "timeout.com",          # NYC news section (parks, skate, local decisions)
-    "hyperallergic.com",    # NYC arts, culture, street art
-    "amny.com",             # AM New York local news
-    "ny1.com",              # NY1 local news
-    "nydailynews.com",      # NY Daily News
-    "nypost.com",           # NY Post (sports strong)
-    "untappedcities.com",   # NYC hidden gems & culture stories
-    "curbed.com",           # NYC urban life & neighborhood stories
-    "newyorker.com",        # NYC culture & stories
-]
-
-# Domains to exclude from all searches (paywalls, etc.)
-_EXCLUDED_DOMAINS = [
-    "washingtonpost.com",  # paywall
-    "wsj.com",             # paywall
-    "ft.com",              # paywall
-    "bloomberg.com",       # paywall
-    "economist.com",       # paywall
-]
+# ── News ──────────────────────────────────────────────────────────────────────
 
 _FALLBACK_GOOD_NEWS = {
     "headline": "Volunteers Around the World Continue to Make a Difference",
@@ -272,107 +180,69 @@ _FALLBACK_NY = {
     "more": [],
 }
 
-_NEWS_INSTRUCTION_TEMPLATE = (
-    "You are the editor of Bliss, a daily newsletter dedicated to positivity. "
-    "Today is {today}. "
-    "From the search results below, select the 4 best stories for each section. "
-    "IMPORTANT — follow all of these rules:\n"
-    "1. RECENCY: only use stories published within the last 2 days (dates shown in brackets). "
-    "Reject any story dated earlier than {cutoff}.\n"
-    "2. NO DUPLICATES: each story or event may appear in only one section. "
-    "If the same underlying event is covered by multiple outlets, pick the single best source "
-    "and ignore the rest — do not include reactions, follow-ups, or different angles on the same event "
-    "across sections.\n"
-    "3. NEW YORK: pick a mix — at most 1 sports story, the rest community, culture, or neighborhood news "
-    "from Brooklyn or Manhattan (Bed-Stuy, Bushwick, etc.). No events calendars or tourist guides.\n"
-    "Write a warm 2-3 sentence blurb for the first story in each section. "
-    "Respond ONLY with valid JSON — no other text, no markdown:\n"
-    '{"good_news":['
-    '{"headline":"...","blurb":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."}'
-    '],"ai_impact":['
-    '{"headline":"...","blurb":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."}'
-    '],"ny_news":['
-    '{"headline":"...","blurb":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."}'
-    "]}"
+_SYSTEM = (
+    "You are the editor of Bliss, a warm, uplifting daily newsletter. "
+    "You find real, current stories and write about them with genuine enthusiasm. "
+    "Respond ONLY with valid JSON — no other text, no markdown fences."
 )
 
 
 def fetch_news() -> tuple[dict, dict, dict]:
-    """Fetch good news, AI impact, and NYC news using Tavily, summarized by Haiku."""
+    """Fetch all three sections using Claude web search (max 3 searches)."""
     today = date.today().strftime("%B %d, %Y")
     cutoff = (date.today() - timedelta(days=2)).strftime("%B %d, %Y")
+
+    prompt = (
+        f"Today is {today}. Do exactly 3 web searches — one per section below — "
+        f"and find stories published on or after {cutoff}. "
+        "Each story must be a real, specific news article (not a listicle, calendar, or roundup). "
+        "Do not repeat the same story across sections. "
+        "If multiple outlets covered the same event, pick the single best source.\n\n"
+
+        "SEARCH 1 — GOOD NEWS: Search for uplifting news from the last 2 days. "
+        "Look for acts of kindness, scientific breakthroughs, environmental wins, community achievements. "
+        "Prefer sources like BBC, Guardian, Reuters, AP, NPR, NYT, GoodNewsNetwork, Positive.news.\n\n"
+
+        "SEARCH 2 — IMPACTFUL AI: Search for AI being used for genuine positive impact in the last 2 days. "
+        "Healthcare, climate, accessibility, education, humanitarian aid — real results, no hype. "
+        "Prefer MIT Tech Review, Wired, Nature, New Scientist, Scientific American.\n\n"
+
+        "SEARCH 3 — NEW YORK: Search for Brooklyn and Manhattan news from the last 2 days. "
+        "Look for community stories, local culture, neighborhood news in Bed-Stuy and Bushwick, "
+        "street art, skateboarding, and sports wins (Mets, Yankees, Knicks, Nets). "
+        "Pick at most 1 sports story — the rest must be community or culture. "
+        "Prefer Gothamist, Brooklyn Paper, Bklyner, Timeout NY news, Hyperallergic, Curbed NY. "
+        "No events calendars, no tourist guides.\n\n"
+
+        "For each section return 4 stories. Write a warm 2-3 sentence blurb for story #1 only. "
+        "Exclude paywalled sources: WSJ, Bloomberg, FT, Economist, Washington Post.\n\n"
+
+        "Reply ONLY with this JSON:\n"
+        '{"good_news":['
+        '{"headline":"...","blurb":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."}'
+        '],"ai_impact":['
+        '{"headline":"...","blurb":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."}'
+        '],"ny_news":['
+        '{"headline":"...","blurb":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."},'
+        '{"headline":"...","link":"https://..."}'
+        "]}"
+    )
+
     try:
-        # Good news: 7 from mainstream + 3 from dedicated positive sites
-        mainstream_results = _tavily_search(
-            "uplifting positive news kindness breakthrough community environment",
-            max_results=7,
-            days=2,
-            topic="news",
-            include_domains=_MAINSTREAM_DOMAINS,
-        )
-        positive_results = _tavily_search(
-            "good news uplifting positive",
-            max_results=3,
-            days=2,
-            topic="news",
-            include_domains=_POSITIVE_DOMAINS,
-        )
-        good_results = _filter_recent(mainstream_results + positive_results)
-
-        ai_results = _filter_recent(_tavily_search(
-            "AI artificial intelligence positive impact healthcare climate accessibility education",
-            max_results=10,
-            days=2,
-            topic="news",
-            include_domains=_AI_DOMAINS,
-        ))
-
-        ny_results = _filter_recent(_tavily_search(
-            "Brooklyn Manhattan community neighborhood culture local news Knicks Mets",
-            max_results=10,
-            days=2,
-            topic="news",
-            include_domains=_NYC_DOMAINS,
-        ))
-
-        # Remove exact URL duplicates across sections before sending to Haiku
-        good_results, ai_results, ny_results = _dedup_urls(
-            [good_results, ai_results, ny_results]
-        )
-
-        instruction = (
-            _NEWS_INSTRUCTION_TEMPLATE
-            .replace("{today}", today)
-            .replace("{cutoff}", cutoff)
-        )
-
-        combined = (
-            f"TODAY: {today}\n\n"
-            "=== GOOD NEWS SEARCH RESULTS ===\n"
-            + _results_to_text(good_results)
-            + "\n\n=== AI IMPACT SEARCH RESULTS ===\n"
-            + _results_to_text(ai_results)
-            + "\n\n=== NEW YORK CITY SEARCH RESULTS ===\n"
-            + _results_to_text(ny_results)
-        )
-
-        text = _summarize(combined, instruction)
+        text = _web_search(prompt, _SYSTEM)
         data = _extract_json(text)
-
         good_news = _shape_stories(data.get("good_news", [])) or _FALLBACK_GOOD_NEWS
         ai_impact = _shape_stories(data.get("ai_impact", [])) or _FALLBACK_AI
         ny_news = _shape_stories(data.get("ny_news", [])) or _FALLBACK_NY
         return good_news, ai_impact, ny_news
-
     except Exception as exc:
         logger.warning("fetch_news failed: %s", exc)
         return _FALLBACK_GOOD_NEWS, _FALLBACK_AI, _FALLBACK_NY
