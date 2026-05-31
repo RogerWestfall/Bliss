@@ -1,6 +1,5 @@
-"""Fetch newsletter content via Claude web search + Haiku summarization."""
+"""Fetch newsletter content via Claude web search + Python story extraction."""
 
-import json
 import logging
 import re
 from datetime import date
@@ -17,6 +16,9 @@ _HEADERS = {"User-Agent": "BlissNewsletter/2.0 (rogerlwestfall@gmail.com)"}
 _MODEL = "claude-haiku-4-5-20251001"
 _client_instance = None
 
+# Matches any https:// URL, stops at whitespace or common trailing punctuation
+_URL_RE = re.compile(r'https?://[^\s\|<>"()\[\]{}]+')
+
 
 def _client() -> anthropic.Anthropic:
     global _client_instance
@@ -25,13 +27,66 @@ def _client() -> anthropic.Anthropic:
     return _client_instance
 
 
-def _extract_json(text: str) -> dict:
-    text = text.strip()
-    text = re.sub(r"```(?:json)?\s*", "", text).replace("```", "").strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end != -1:
-        return json.loads(text[start:end + 1])
-    return json.loads(text)
+def _parse_section_digest(text: str) -> list[dict]:
+    """Extract up to 4 stories from a section digest.
+
+    Handles two formats the search model might use:
+      Labeled:  1. HEADLINE: ...\n   URL: https://...\n   BLURB: ...
+      Pipe:     1. Headline | https://... | date
+    """
+    stories = []
+    # Split on newline followed by a story number (1–4)
+    blocks = re.split(r'\n(?=\s*[1-4][.)]\s)', '\n' + text.strip())
+
+    for block in blocks:
+        block = block.strip()
+        if not re.match(r'[1-4][.)]', block):
+            continue
+
+        # ── URL ─────────────────────────────────────────────────────────────
+        # Prefer the URL: labeled line; fall back to any https:// in the block
+        url = ""
+        url_label = re.search(r'\bURL:\s*(https?://\S+)', block, re.IGNORECASE)
+        if url_label:
+            url = url_label.group(1).rstrip('.,;)')
+        else:
+            url_m = _URL_RE.search(block)
+            if url_m:
+                url = url_m.group(0).rstrip('.,;)')
+
+        if not url:
+            continue
+
+        # ── Headline ─────────────────────────────────────────────────────────
+        headline = ""
+        h_label = re.search(r'HEADLINE:\s*(.+?)(?:\n|$)', block, re.IGNORECASE)
+        if h_label:
+            headline = h_label.group(1).strip()
+        else:
+            # Find text before the URL; in pipe format the headline is before |
+            before_url = block[:block.index(url)].strip()
+            before_url = re.sub(r'^[1-4][.)]\s*', '', before_url)
+            headline = before_url.split('|')[0].strip().rstrip(':')
+
+        headline = re.sub(r'\*+', '', headline).strip()  # strip markdown bold
+        if not headline or len(headline) < 5:
+            continue
+
+        # ── Blurb (story #1 only) ────────────────────────────────────────────
+        blurb = ""
+        b_m = re.search(
+            r'BLURB:\s*(.+?)(?=\n\s*[1-4][.)]|\Z)',
+            block, re.IGNORECASE | re.DOTALL,
+        )
+        if b_m:
+            blurb = b_m.group(1).strip()
+
+        story: dict = {"headline": headline, "link": url}
+        if blurb:
+            story["blurb"] = blurb
+        stories.append(story)
+
+    return stories[:4]
 
 
 def _og_image(url: str) -> str:
@@ -55,58 +110,16 @@ def _og_image(url: str) -> str:
     return ""
 
 
-def _search_section(prompt: str) -> str:
-    """One focused web search for one newsletter section. Returns prose."""
-    resp = _client().messages.create(
-        model=_MODEL,
-        max_tokens=1500,
-        tools=[{
-            "type": "web_search_20250305",
-            "name": "web_search",
-            "max_uses": 4,
-        }],
-        messages=[{"role": "user", "content": prompt}],
-    )
-    block_types = [getattr(b, "type", "?") for b in resp.content]
-    logger.info("stop_reason=%s | blocks=%s", resp.stop_reason, block_types)
-    text = "".join(
-        getattr(b, "text", "") or ""
-        for b in resp.content
-        if getattr(b, "type", "") == "text"
-    )
-    logger.info("Digest (%d chars): %s...", len(text), text[:120])
-    return text
-
-
-def _to_json(digest: str, schema: str) -> str:
-    """Convert a prose digest into strict JSON — no tools, cheap call."""
-    resp = _client().messages.create(
-        model=_MODEL,
-        max_tokens=3072,
-        system=(
-            "Convert the news digest into valid JSON exactly matching the schema. "
-            "Each story is formatted with labeled fields: HEADLINE:, URL:, DATE:, BLURB:. "
-            "Copy each URL character-for-character from its URL: line. "
-            "If a URL: line is missing or blank for a story, use an empty string. "
-            "Output ONLY JSON, no markdown, no commentary."
-        ),
-        messages=[{"role": "user", "content": f"{schema}\n\nDIGEST:\n{digest}"}],
-    )
-    return resp.content[0].text
-
-
 def _is_article_url(url: str) -> bool:
-    """Reject completely bare domains — require at least some path."""
+    """Reject bare domains — require at least some path beyond '/'."""
     if not url or not url.startswith("http"):
         return False
     from urllib.parse import urlparse
-    path = urlparse(url).path.rstrip("/")
-    return len(path) > 0
+    return len(urlparse(url).path.rstrip("/")) > 0
 
 
 def _dedup_by_domain(stories: list) -> list:
-    """Keep only the first story from each domain."""
-    seen = set()
+    seen: set = set()
     out = []
     for s in stories:
         url = s.get("link", "")
@@ -139,6 +152,29 @@ def _shape_stories(stories: list) -> dict | None:
             for s in stories[1:]
         ],
     }
+
+
+def _search_section(prompt: str) -> str:
+    """One focused web search call for one newsletter section. Returns prose."""
+    resp = _client().messages.create(
+        model=_MODEL,
+        max_tokens=1500,
+        tools=[{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 4,
+        }],
+        messages=[{"role": "user", "content": prompt}],
+    )
+    block_types = [getattr(b, "type", "?") for b in resp.content]
+    logger.info("stop_reason=%s | blocks=%s", resp.stop_reason, block_types)
+    text = "".join(
+        getattr(b, "text", "") or ""
+        for b in resp.content
+        if getattr(b, "type", "") == "text"
+    )
+    logger.info("Digest (%d chars): %s...", len(text), text[:200])
+    return text
 
 
 # ── Quote of the Day ─────────────────────────────────────────────────────────
@@ -198,56 +234,34 @@ _FALLBACK_NY = {
 }
 
 _SECTION_RULES = (
-    "Find exactly 4 stories. Output them in EXACTLY this format — do not deviate:\n\n"
-    "1. HEADLINE: [headline]\n"
-    "   URL: [full article URL starting with https://]\n"
-    "   DATE: [date]\n"
+    "Find exactly 4 stories and output them in this exact format:\n\n"
+    "1. HEADLINE: [article headline]\n"
+    "   URL: [https://full-article-url]\n"
+    "   DATE: [publication date]\n"
     "   BLURB: [warm 2-3 sentence description]\n\n"
-    "2. HEADLINE: [headline]\n"
-    "   URL: [full article URL starting with https://]\n"
-    "   DATE: [date]\n\n"
-    "3. HEADLINE: [headline]\n"
-    "   URL: [full article URL starting with https://]\n"
-    "   DATE: [date]\n\n"
-    "4. HEADLINE: [headline]\n"
-    "   URL: [full article URL starting with https://]\n"
-    "   DATE: [date]\n\n"
+    "2. HEADLINE: [article headline]\n"
+    "   URL: [https://full-article-url]\n"
+    "   DATE: [publication date]\n\n"
+    "3. HEADLINE: [article headline]\n"
+    "   URL: [https://full-article-url]\n"
+    "   DATE: [publication date]\n\n"
+    "4. HEADLINE: [article headline]\n"
+    "   URL: [https://full-article-url]\n"
+    "   DATE: [publication date]\n\n"
     "Rules:\n"
     "- Each story must be a specific article (not a roundup, digest, or weekly summary).\n"
     "- Each story from a different website.\n"
-    "- Prefer articles from the last 7 days; older is fine if nothing recent exists.\n"
+    "- Prefer articles from the last 7 days; older is fine if nothing recent.\n"
     "- Skip WSJ, Bloomberg, FT, Economist, Washington Post.\n"
-    "- If you cannot find 4 perfect matches, include the best available.\n"
-    "- Every URL field must start with https:// — never leave it blank.\n"
-)
-
-_JSON_SCHEMA = (
-    "Convert the three section digests below into this exact JSON. "
-    "Copy the real headlines and URLs directly — do not invent or paraphrase them.\n"
-    '{"good_news":['
-    '{"headline":"...","blurb":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."}'
-    '],"ai_impact":['
-    '{"headline":"...","blurb":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."}'
-    '],"ny_news":['
-    '{"headline":"...","blurb":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."},'
-    '{"headline":"...","link":"https://..."}'
-    "]}"
+    "- Include the best available stories — do not refuse or leave fields blank.\n"
+    "- Every URL must start with https:// and link directly to the article.\n"
 )
 
 
 def fetch_news() -> tuple[dict, dict, dict]:
-    """Three focused search calls (one per section) + one JSON formatting call."""
+    """Three focused search calls; stories extracted directly by Python regex."""
     today = date.today()
     today_str = today.strftime("%B %d, %Y")
-    rules = _SECTION_RULES
 
     good_prompt = (
         f"Today is {today_str}. Find 4 uplifting, positive news stories from the past week.\n"
@@ -255,7 +269,7 @@ def fetch_news() -> tuple[dict, dict, dict]:
         "community achievements, wildlife recoveries, humanitarian milestones.\n"
         "Search any reputable news source — BBC, Guardian, NYT, NPR, Reuters, AP, "
         "CBC, The Independent, Positive News are all great.\n\n"
-        + rules
+        + _SECTION_RULES
     )
 
     ai_prompt = (
@@ -265,7 +279,7 @@ def fetch_news() -> tuple[dict, dict, dict]:
         "with actual results, not just product announcements.\n"
         "Search any reputable tech or science outlet — MIT Technology Review, Wired, "
         "Nature, New Scientist, Scientific American, NPR, BBC, The Verge, STAT News.\n\n"
-        + rules
+        + _SECTION_RULES
     )
 
     ny_prompt = (
@@ -277,48 +291,38 @@ def fetch_news() -> tuple[dict, dict, dict]:
         "Search Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, Curbed NY, NY1, "
         "Timeout NY, or New York Times metro section.\n"
         "Skip events-preview articles; only include things that already happened.\n\n"
-        + rules
+        + _SECTION_RULES
     )
 
     try:
         logger.info("Searching: Good News...")
         good_digest = _search_section(good_prompt)
-        logger.info("Good News digest: %d chars", len(good_digest))
+        good_stories = _parse_section_digest(good_digest)
+        logger.info("Good News: %d parsed; links=%s",
+                    len(good_stories), [s.get("link", "")[:70] for s in good_stories])
 
         logger.info("Searching: AI Impact...")
         ai_digest = _search_section(ai_prompt)
-        logger.info("AI Impact digest: %d chars", len(ai_digest))
+        ai_stories = _parse_section_digest(ai_digest)
+        logger.info("AI Impact: %d parsed; links=%s",
+                    len(ai_stories), [s.get("link", "")[:70] for s in ai_stories])
 
         logger.info("Searching: New York...")
         ny_digest = _search_section(ny_prompt)
-        logger.info("New York digest: %d chars", len(ny_digest))
+        ny_stories = _parse_section_digest(ny_digest)
+        logger.info("New York: %d parsed; links=%s",
+                    len(ny_stories), [s.get("link", "")[:70] for s in ny_stories])
 
-        combined = (
-            "=== GOOD NEWS ===\n" + good_digest +
-            "\n\n=== IMPACTFUL AI ===\n" + ai_digest +
-            "\n\n=== NEW YORK ===\n" + ny_digest
-        )
+        good_news = _shape_stories(good_stories) or _FALLBACK_GOOD_NEWS
+        ai_impact = _shape_stories(ai_stories) or _FALLBACK_AI
+        ny_news = _shape_stories(ny_stories) or _FALLBACK_NY
 
-        logger.info("Converting combined digest (%d chars) to JSON...", len(combined))
-        text = _to_json(combined, _JSON_SCHEMA)
-        logger.info("JSON response (%d chars): %s...", len(text), text[:400])
-        data = _extract_json(text)
+        logger.info("Headlines — good: %s | ai: %s | ny: %s",
+                    good_news["headline"][:50],
+                    ai_impact["headline"][:50],
+                    ny_news["headline"][:50])
+        return good_news, ai_impact, ny_news
 
-        for section in ("good_news", "ai_impact", "ny_news"):
-            stories = data.get(section, [])
-            logger.info("%s: %d stories raw; links=%s", section, len(stories),
-                        [s.get("link", "")[:60] for s in stories])
-
-        good_news = _shape_stories(data.get("good_news", []))
-        ai_impact = _shape_stories(data.get("ai_impact", []))
-        ny_news = _shape_stories(data.get("ny_news", []))
-        logger.info("shaped — good=%s ai=%s ny=%s",
-                    bool(good_news), bool(ai_impact), bool(ny_news))
-        return (
-            good_news or _FALLBACK_GOOD_NEWS,
-            ai_impact or _FALLBACK_AI,
-            ny_news or _FALLBACK_NY,
-        )
     except Exception:
         logger.exception("fetch_news failed — using fallbacks")
         return _FALLBACK_GOOD_NEWS, _FALLBACK_AI, _FALLBACK_NY
