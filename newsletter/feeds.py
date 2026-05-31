@@ -247,31 +247,35 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
         "an underdog winning, a person beating the odds, the environment recovering, an act of "
         "generosity, a long-overdue milestone, animals thriving, or the world measurably improving "
         "in some way. Any topic qualifies as long as the emotional tone is genuinely uplifting.\n"
-        "Prefer established outlets: New York Times, Guardian, BBC, NPR, Reuters, AP, The Independent.\n\n"
+        "Prefer established news outlets: New York Times, Guardian, BBC, NPR, Reuters, AP, The Independent, CNN, NBC.\n"
+        "Skip aggregator sites that collect positive stories from other sources: "
+        "goodnewsnetwork.org, positive.news, goodgoodgood.co, sunnyskyz.com, happiest.media, "
+        "inspiremore.com, upworthy.com, good.is — these repackage stories, they don't report them.\n\n"
         + _SECTION_RULES
     )
 
     ai_prompt = (
         f"Today is {today_str}. Find AI technology news stories from the last 3 days "
         "that would make someone feel excited or hopeful about the future.\n"
-        "The story should show technology solving a real problem or opening up new possibilities: "
-        "a tool helping people who couldn't be helped before, a research breakthrough that changes "
-        "what's possible, a system catching something humans missed, or an application making "
-        "everyday life meaningfully better. Focus on demonstrated impact, not product announcements.\n"
-        "Prefer: MIT Technology Review, Wired, Nature, New Scientist, The Verge, STAT News, NPR, BBC.\n\n"
+        "Could be a new AI tool, a research breakthrough, a real-world application, "
+        "or any development that shows AI making life better or expanding what's possible. "
+        "New product launches are fine if the capability itself is impressive or beneficial.\n"
+        "Prefer: MIT Technology Review, Wired, Nature, New Scientist, The Verge, STAT News, "
+        "Ars Technica, TechCrunch, NPR, BBC.\n\n"
         + _SECTION_RULES
     )
 
     ny_prompt = (
-        f"Today is {today_str}. Find New York City stories from the last 3 days that capture "
-        "what makes the city feel alive and worth loving.\n"
-        "Could be a Brooklyn neighborhood doing something remarkable, a local team or person "
-        "winning, a new place opening that people are buzzing about, street art or culture, "
-        "community pride, a only-in-New-York moment, or anything that makes a New Yorker smile. "
-        "Brooklyn (Bed-Stuy, Bushwick, Crown Heights) and Manhattan preferred. "
+        f"Today is {today_str}. Find New York City news stories from the last 3 days "
+        "that capture what makes the city feel alive and worth loving.\n"
+        "Could be a neighborhood doing something remarkable, a local team or person winning, "
+        "a new restaurant or venue opening that people are excited about, street art or culture, "
+        "community pride, or anything distinctly New York. "
+        "Brooklyn and Manhattan preferred but any NYC borough is fine. "
         "At most 1 sports result. Only things that already happened — no event previews.\n"
-        "Prefer: New York Times metro, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
-        "Curbed NY, Timeout NY, amNY, NY1.\n\n"
+        "Search broadly across NYC outlets: New York Times, Gothamist, Brooklyn Paper, "
+        "Bklyner, Hyperallergic, Curbed NY, Timeout NY, amNY, NY1, Eater NY, "
+        "New York Magazine, Patch NYC.\n\n"
         + _SECTION_RULES
     )
 
