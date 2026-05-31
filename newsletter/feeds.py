@@ -85,9 +85,10 @@ def _to_json(digest: str, schema: str) -> str:
         max_tokens=3072,
         system=(
             "Convert the news digest into valid JSON exactly matching the schema. "
-            "Copy every URL character-for-character from the digest — "
-            "never construct a URL from a domain name alone, never abbreviate or guess any path. "
-            "Output ONLY JSON."
+            "Each story is formatted with labeled fields: HEADLINE:, URL:, DATE:, BLURB:. "
+            "Copy each URL character-for-character from its URL: line. "
+            "If a URL: line is missing or blank for a story, use an empty string. "
+            "Output ONLY JSON, no markdown, no commentary."
         ),
         messages=[{"role": "user", "content": f"{schema}\n\nDIGEST:\n{digest}"}],
     )
@@ -95,12 +96,12 @@ def _to_json(digest: str, schema: str) -> str:
 
 
 def _is_article_url(url: str) -> bool:
-    """Reject bare homepages — require a URL with a meaningful path."""
+    """Reject completely bare domains — require at least some path."""
     if not url or not url.startswith("http"):
         return False
     from urllib.parse import urlparse
     path = urlparse(url).path.rstrip("/")
-    return len(path) > 5
+    return len(path) > 0
 
 
 def _dedup_by_domain(stories: list) -> list:
@@ -197,21 +198,27 @@ _FALLBACK_NY = {
 }
 
 _SECTION_RULES = (
-    "Find exactly 4 stories. Rules:\n"
-    "- Each story must be a specific article about one topic — not a roundup, "
-    "digest, or weekly summary.\n"
-    "- Each story must come from a different website.\n"
-    "- Strongly prefer articles from the last 7 days; use older only if nothing recent exists.\n"
-    "- Skip paywalled outlets: WSJ, Bloomberg, FT, Economist, Washington Post.\n"
-    "- If you cannot find 4 perfect matches, include the best available stories.\n"
-    "For each story provide: headline, the FULL article URL including its path "
-    "(e.g. https://www.bbc.com/news/science-12345678), and date.\n"
-    "For story #1 also write a warm 2-3 sentence blurb.\n"
-    "Format:\n"
-    "1. [HEADLINE] | [FULL URL] | [DATE]\n   BLURB: ...\n"
-    "2. [HEADLINE] | [FULL URL] | [DATE]\n"
-    "3. [HEADLINE] | [FULL URL] | [DATE]\n"
-    "4. [HEADLINE] | [FULL URL] | [DATE]\n"
+    "Find exactly 4 stories. Output them in EXACTLY this format — do not deviate:\n\n"
+    "1. HEADLINE: [headline]\n"
+    "   URL: [full article URL starting with https://]\n"
+    "   DATE: [date]\n"
+    "   BLURB: [warm 2-3 sentence description]\n\n"
+    "2. HEADLINE: [headline]\n"
+    "   URL: [full article URL starting with https://]\n"
+    "   DATE: [date]\n\n"
+    "3. HEADLINE: [headline]\n"
+    "   URL: [full article URL starting with https://]\n"
+    "   DATE: [date]\n\n"
+    "4. HEADLINE: [headline]\n"
+    "   URL: [full article URL starting with https://]\n"
+    "   DATE: [date]\n\n"
+    "Rules:\n"
+    "- Each story must be a specific article (not a roundup, digest, or weekly summary).\n"
+    "- Each story from a different website.\n"
+    "- Prefer articles from the last 7 days; older is fine if nothing recent exists.\n"
+    "- Skip WSJ, Bloomberg, FT, Economist, Washington Post.\n"
+    "- If you cannot find 4 perfect matches, include the best available.\n"
+    "- Every URL field must start with https:// — never leave it blank.\n"
 )
 
 _JSON_SCHEMA = (
