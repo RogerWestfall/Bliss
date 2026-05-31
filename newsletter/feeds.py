@@ -276,10 +276,15 @@ def fetch_news() -> tuple[dict, dict, dict]:
     try:
         logger.info("Searching: Good News...")
         good_digest = _search_section(good_prompt)
+        logger.info("Good News digest: %d chars", len(good_digest))
+
         logger.info("Searching: AI Impact...")
         ai_digest = _search_section(ai_prompt)
+        logger.info("AI Impact digest: %d chars", len(ai_digest))
+
         logger.info("Searching: New York...")
         ny_digest = _search_section(ny_prompt)
+        logger.info("New York digest: %d chars", len(ny_digest))
 
         combined = (
             "=== GOOD NEWS ===\n" + good_digest +
@@ -287,12 +292,15 @@ def fetch_news() -> tuple[dict, dict, dict]:
             "\n\n=== NEW YORK ===\n" + ny_digest
         )
 
+        logger.info("Converting combined digest (%d chars) to JSON...", len(combined))
         text = _to_json(combined, _JSON_SCHEMA)
+        logger.info("JSON response (%d chars): %s...", len(text), text[:200])
         data = _extract_json(text)
         good_news = _shape_stories(data.get("good_news", [])) or _FALLBACK_GOOD_NEWS
         ai_impact = _shape_stories(data.get("ai_impact", [])) or _FALLBACK_AI
         ny_news = _shape_stories(data.get("ny_news", [])) or _FALLBACK_NY
+        logger.info("fetch_news succeeded")
         return good_news, ai_impact, ny_news
-    except Exception as exc:
-        logger.warning("fetch_news failed: %s", exc)
+    except Exception:
+        logger.exception("fetch_news failed — using fallbacks")
         return _FALLBACK_GOOD_NEWS, _FALLBACK_AI, _FALLBACK_NY
