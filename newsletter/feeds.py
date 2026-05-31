@@ -56,14 +56,22 @@ def _og_image(url: str) -> str:
 
 
 def _web_search(prompt: str, system: str) -> str:
-    """Run Claude with web search (max 3 searches) and return the text response."""
+    """Run Claude with server-side web search and return the text response.
+
+    web_search_20250305 runs entirely inside the API call — Claude searches up
+    to max_uses times and synthesizes text in one turn. The only follow-up we
+    handle is stop_reason="pause_turn" (a long search that needs continuation):
+    we pass the content back verbatim. We never inject tool_result blocks — the
+    server fills those in. Injecting them restarts the search budget and triples
+    cost.
+    """
     messages = [{"role": "user", "content": prompt}]
     text = ""
 
-    for i in range(10):
+    for i in range(4):
         resp = _client().messages.create(
             model=_MODEL,
-            max_tokens=2048,
+            max_tokens=3072,
             system=system,
             tools=[{
                 "type": "web_search_20250305",
@@ -81,29 +89,16 @@ def _web_search(prompt: str, system: str) -> str:
             for b in resp.content
             if getattr(b, "type", "") == "text"
         )
+
+        if resp.stop_reason == "pause_turn":
+            # Long-running search paused — continue by replaying the content.
+            messages.append({"role": "assistant", "content": resp.content})
+            continue
+
+        # end_turn (or anything else): the turn is complete.
         if text:
             logger.info("Got text (%d chars): %s...", len(text), text[:120])
-
-        if resp.stop_reason == "end_turn":
-            if text:
-                return text
-            logger.warning("Round %d: end_turn with no text, requesting synthesis", i + 1)
-            messages.append({"role": "assistant", "content": resp.content})
-            messages.append({"role": "user", "content": "Now write the JSON response based on your search results."})
-            continue
-
-        if resp.stop_reason == "tool_use":
-            messages.append({"role": "assistant", "content": resp.content})
-            tool_results = [
-                {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
-                for b in resp.content
-                if getattr(b, "type", "") == "tool_use"
-            ]
-            if tool_results:
-                messages.append({"role": "user", "content": tool_results})
-            continue
-
-        break
+        return text
 
     return text
 
