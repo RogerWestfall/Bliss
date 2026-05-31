@@ -182,13 +182,15 @@ _FALLBACK_NY = {
 }
 
 _SECTION_RULES = (
-    "Write a digest of exactly 4 stories. Rules:\n"
-    "- Each story must be a specific, standalone article — not a roundup, "
-    "digest, listicle, or weekly summary ('good news this week', '5 things', etc.).\n"
-    "- Each story must come from a different website.\n"
-    "- Prefer recent stories (last 5 days). Skip anything paywalled "
-    "(WSJ, Bloomberg, FT, Economist, Washington Post).\n"
-    "For each story write: headline, exact article URL, and date. "
+    "Write a digest of exactly 4 stories. Strict rules:\n"
+    "- REJECT any URL whose path contains: /week, /weekly, /roundup, /digest, /top-stories, "
+    "/good-news-this, /best-of, /this-week, /5-things, /things-to-do, /events.\n"
+    "- Each story must be a specific, standalone article with its own unique headline — "
+    "never a roundup, digest, listicle, or weekly summary.\n"
+    "- Each story must come from a DIFFERENT website (no two stories from the same domain).\n"
+    "- Only include stories published on or after {cutoff}. Skip anything older.\n"
+    "- Skip paywalled outlets: WSJ, Bloomberg, FT, Economist, Washington Post.\n"
+    "For each story write: headline, exact article URL, and publication date. "
     "For story #1 also write a warm 2-3 sentence blurb.\n"
     "Format:\n"
     "1. [HEADLINE] | [URL] | [DATE]\n   BLURB: ...\n"
@@ -221,31 +223,50 @@ _JSON_SCHEMA = (
 
 def fetch_news() -> tuple[dict, dict, dict]:
     """Three focused search calls (one per section) + one JSON formatting call."""
-    today = date.today().strftime("%B %d, %Y")
+    today = date.today()
+    cutoff = (today - timedelta(days=5)).strftime("%B %d, %Y")
+    today_str = today.strftime("%B %d, %Y")
+    rules = _SECTION_RULES.replace("{cutoff}", cutoff)
 
     good_prompt = (
-        f"Today is {today}. Search for 4 uplifting positive news stories from the last 5 days.\n"
-        "Look for: acts of kindness, scientific breakthroughs, environmental wins, community achievements.\n"
-        "Prefer: BBC, Guardian, Reuters, AP, NPR, NYT, GoodNewsNetwork, Positive.news.\n\n"
-        + _SECTION_RULES
+        f"Today is {today_str}. Search for 4 uplifting, positive news stories published since {cutoff}.\n"
+        "Good topics: medical breakthroughs, environmental wins, acts of extraordinary kindness, "
+        "community achievements, wildlife recoveries, humanitarian milestones.\n"
+        "Preferred outlets (search these specifically): BBC News, The Guardian, Reuters, AP News, "
+        "NPR, New York Times, CBC, The Independent, Good News Network (individual articles only, "
+        "NOT their weekly digest pages).\n"
+        "AVOID: any site whose entire purpose is aggregating 'good news' roundups.\n\n"
+        + rules
     )
 
     ai_prompt = (
-        f"Today is {today}. Search for 4 stories from the last 5 days about AI creating genuine positive impact.\n"
-        "Look for: healthcare breakthroughs, climate solutions, accessibility tools, "
-        "education improvements, humanitarian aid. Real demonstrated results only — no hype.\n"
-        "Prefer: MIT Tech Review, Wired, Nature, New Scientist, Scientific American, NPR, BBC.\n\n"
-        + _SECTION_RULES
+        f"Today is {today_str}. Search for 4 stories published since {cutoff} about AI "
+        "delivering real, concrete positive impact.\n"
+        "Good topics: a specific medical AI tool used on real patients, an AI system solving "
+        "a climate/energy problem, AI improving accessibility for disabled people, AI helping "
+        "scientists make a confirmed discovery.\n"
+        "Preferred outlets: MIT Technology Review, Wired, Nature, New Scientist, "
+        "Scientific American, NPR, BBC, The Verge, STAT News.\n"
+        "AVOID: opinion pieces, hype articles, product announcements without demonstrated results, "
+        "and anything about AI regulation or AI safety debates.\n\n"
+        + rules
     )
 
     ny_prompt = (
-        f"Today is {today}. Search for 4 Brooklyn and Manhattan news stories from the last 5 days.\n"
-        "Look for: community stories, local culture, neighborhood news in Bed-Stuy and Bushwick, "
-        "street art, skateboarding, parks, sports wins (Mets, Yankees, Knicks, Nets).\n"
-        "Pick at most 1 sports story — the rest must be community, culture, or neighborhood news.\n"
-        "Prefer: Gothamist, Brooklyn Paper, Bklyner, Timeout NY, Hyperallergic, Curbed NY, NY1.\n"
-        "No events calendars, tourist guides, or generic 'things to do' articles.\n\n"
-        + _SECTION_RULES
+        f"Today is {today_str}. Search for 4 specific news stories from Brooklyn or Manhattan "
+        f"published since {cutoff}.\n"
+        "Good topics: a specific community event that already happened, neighborhood art or "
+        "culture (murals, galleries, performances), a skateboarding or sports story with actual "
+        "results (Mets win, Knicks game recap), something happening in Bed-Stuy or Bushwick, "
+        "a new local business or park opening.\n"
+        "Preferred outlets: Gothamist, Brooklyn Paper, Bklyner, Timeout NY, Hyperallergic, "
+        "Curbed NY, NY1, Patch Brooklyn, New York Times City section.\n"
+        "STRICT RULES — reject any article that:\n"
+        "- Lists upcoming events or things to do this weekend\n"
+        "- Is a sports PREVIEW (only recap/result articles allowed)\n"
+        "- Covers NYC in general without a specific Brooklyn/Manhattan neighborhood angle\n"
+        "At most 1 sports story; the other 3 must be community, culture, or neighborhood.\n\n"
+        + rules
     )
 
     try:
