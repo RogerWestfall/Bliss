@@ -209,28 +209,28 @@ def fetch_quote() -> dict:
 # ── News ──────────────────────────────────────────────────────────────────────
 
 _SECTION_RULES = (
-    "Find up to 4 stories published in the last 24 hours and output them in this exact format:\n\n"
+    "Find up to 4 stories from the last 3 days and output them in this exact format:\n\n"
     "1. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date and time]\n"
+    "   DATE: [publication date]\n"
     "   BLURB: [warm 2-3 sentence description]\n\n"
     "2. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date and time]\n\n"
+    "   DATE: [publication date]\n\n"
     "3. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date and time]\n\n"
+    "   DATE: [publication date]\n\n"
     "4. HEADLINE: [article headline]\n"
     "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date and time]\n\n"
+    "   DATE: [publication date]\n\n"
     "Rules:\n"
-    "- Only include articles published in the last 24 hours. Do not include older articles.\n"
+    "- Only include articles from the last 3 days. Prefer the most recent.\n"
     "- Each story must be a specific, standalone article — NOT a roundup, digest, "
-    "'good news of the week', or aggregator post listing multiple items.\n"
+    "or aggregator post listing multiple stories.\n"
     "- Each story from a different website.\n"
-    "- Prefer premium outlets (New York Times, Guardian, BBC, NPR, Reuters, AP, Wired, Nature) "
-    "but include any reputable source if premium outlets don't have qualifying stories.\n"
-    "- If fewer than 4 qualifying stories exist, output only what you find — do not pad with older stories.\n"
+    "- Prefer established outlets (New York Times, Guardian, BBC, NPR, Reuters, AP, Wired, Nature) "
+    "but any credible source is fine.\n"
+    "- Output only what you find — do not pad with older or off-topic stories.\n"
     "- Every URL must start with https:// and link directly to the article.\n"
 )
 
@@ -241,31 +241,37 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
     today_str = today.strftime("%B %d, %Y")
 
     good_prompt = (
-        f"Today is {today_str}. Search for uplifting, positive news stories published in the last 24 hours.\n"
-        "Topics: medical breakthroughs, environmental wins, acts of kindness, "
-        "community achievements, wildlife recoveries, humanitarian milestones.\n"
-        "Prioritize: New York Times, Guardian, BBC, NPR, Reuters, AP, CBC, The Independent.\n\n"
+        f"Today is {today_str}. Find news stories from the last 3 days that would make someone "
+        "feel genuinely hopeful, proud, or inspired when they read them over morning coffee.\n"
+        "The story could be about anything — a scientific discovery, a community coming together, "
+        "an underdog winning, a person beating the odds, the environment recovering, an act of "
+        "generosity, a long-overdue milestone, animals thriving, or the world measurably improving "
+        "in some way. Any topic qualifies as long as the emotional tone is genuinely uplifting.\n"
+        "Prefer established outlets: New York Times, Guardian, BBC, NPR, Reuters, AP, The Independent.\n\n"
         + _SECTION_RULES
     )
 
     ai_prompt = (
-        f"Today is {today_str}. Search for stories about AI or technology making a positive "
-        "difference, published in the last 24 hours.\n"
-        "Topics: AI in healthcare, climate tech, accessibility tools, scientific breakthroughs, "
-        "beneficial new AI applications.\n"
-        "Prioritize: MIT Technology Review, Wired, Nature, New Scientist, Scientific American, "
-        "NPR, BBC, The Verge, STAT News.\n\n"
+        f"Today is {today_str}. Find news stories from the last 3 days about technology — "
+        "especially AI — that would make someone feel excited or hopeful about the future.\n"
+        "The story should show technology solving a real problem or opening up new possibilities: "
+        "a tool helping people who couldn't be helped before, a research breakthrough that changes "
+        "what's possible, a system catching something humans missed, or an application making "
+        "everyday life meaningfully better. Focus on demonstrated impact, not product announcements.\n"
+        "Prefer: MIT Technology Review, Wired, Nature, New Scientist, The Verge, STAT News, NPR, BBC.\n\n"
         + _SECTION_RULES
     )
 
     ny_prompt = (
-        f"Today is {today_str}. Search for New York City news stories published in the last 24 hours — "
-        "especially Brooklyn (Bed-Stuy, Bushwick, Crown Heights) or Manhattan.\n"
-        "Topics: neighborhood life, street art, sports results (Mets, Yankees, Knicks, Nets), "
-        "community openings, parks, culture, food. At most 1 sports story.\n"
-        "Prioritize: New York Times metro, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
-        "Curbed NY, NY1, Timeout NY, amNY.\n"
-        "Only include things that already happened — no event previews.\n\n"
+        f"Today is {today_str}. Find New York City stories from the last 3 days that capture "
+        "what makes the city feel alive and worth loving.\n"
+        "Could be a Brooklyn neighborhood doing something remarkable, a local team or person "
+        "winning, a new place opening that people are buzzing about, street art or culture, "
+        "community pride, a only-in-New-York moment, or anything that makes a New Yorker smile. "
+        "Brooklyn (Bed-Stuy, Bushwick, Crown Heights) and Manhattan preferred. "
+        "At most 1 sports result. Only things that already happened — no event previews.\n"
+        "Prefer: New York Times metro, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
+        "Curbed NY, Timeout NY, amNY, NY1.\n\n"
         + _SECTION_RULES
     )
 
