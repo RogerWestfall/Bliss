@@ -83,10 +83,24 @@ def _to_json(digest: str, schema: str) -> str:
     resp = _client().messages.create(
         model=_MODEL,
         max_tokens=3072,
-        system="Convert the news digest into valid JSON exactly matching the schema. Output ONLY JSON.",
+        system=(
+            "Convert the news digest into valid JSON exactly matching the schema. "
+            "Copy every URL character-for-character from the digest — "
+            "never construct a URL from a domain name alone, never abbreviate or guess any path. "
+            "Output ONLY JSON."
+        ),
         messages=[{"role": "user", "content": f"{schema}\n\nDIGEST:\n{digest}"}],
     )
     return resp.content[0].text
+
+
+def _is_article_url(url: str) -> bool:
+    """Reject bare homepages — require a URL with a meaningful path."""
+    if not url or not url.startswith("http"):
+        return False
+    from urllib.parse import urlparse
+    path = urlparse(url).path.rstrip("/")
+    return len(path) > 5
 
 
 def _dedup_by_domain(stories: list) -> list:
@@ -109,6 +123,7 @@ def _dedup_by_domain(stories: list) -> list:
 
 
 def _shape_stories(stories: list) -> dict | None:
+    stories = [s for s in stories if _is_article_url(s.get("link", ""))]
     stories = _dedup_by_domain(stories)
     if not stories:
         return None
@@ -182,21 +197,20 @@ _FALLBACK_NY = {
 }
 
 _SECTION_RULES = (
-    "Write a digest of exactly 4 stories. Strict rules:\n"
-    "- REJECT any URL whose path contains: /week, /weekly, /roundup, /digest, /top-stories, "
-    "/good-news-this, /best-of, /this-week, /5-things, /things-to-do, /events.\n"
-    "- Each story must be a specific, standalone article with its own unique headline — "
-    "never a roundup, digest, listicle, or weekly summary.\n"
-    "- Each story must come from a DIFFERENT website (no two stories from the same domain).\n"
+    "Write a digest of exactly 4 stories. Rules:\n"
+    "- Each story must be a specific, standalone article — not a roundup, "
+    "digest, listicle, or weekly summary ('good news this week', '5 things', etc.).\n"
+    "- Each story must come from a different website.\n"
     "- Only include stories published on or after {cutoff}. Skip anything older.\n"
     "- Skip paywalled outlets: WSJ, Bloomberg, FT, Economist, Washington Post.\n"
-    "For each story write: headline, exact article URL, and publication date. "
-    "For story #1 also write a warm 2-3 sentence blurb.\n"
+    "For each story provide: headline, the FULL article URL (including path, "
+    "e.g. https://www.bbc.com/news/science-12345678 — NOT just the homepage domain), "
+    "and publication date. For story #1 also write a warm 2-3 sentence blurb.\n"
     "Format:\n"
-    "1. [HEADLINE] | [URL] | [DATE]\n   BLURB: ...\n"
-    "2. [HEADLINE] | [URL] | [DATE]\n"
-    "3. [HEADLINE] | [URL] | [DATE]\n"
-    "4. [HEADLINE] | [URL] | [DATE]\n"
+    "1. [HEADLINE] | [FULL URL] | [DATE]\n   BLURB: ...\n"
+    "2. [HEADLINE] | [FULL URL] | [DATE]\n"
+    "3. [HEADLINE] | [FULL URL] | [DATE]\n"
+    "4. [HEADLINE] | [FULL URL] | [DATE]\n"
 )
 
 _JSON_SCHEMA = (
@@ -230,42 +244,32 @@ def fetch_news() -> tuple[dict, dict, dict]:
 
     good_prompt = (
         f"Today is {today_str}. Search for 4 uplifting, positive news stories published since {cutoff}.\n"
-        "Good topics: medical breakthroughs, environmental wins, acts of extraordinary kindness, "
+        "Topics: medical breakthroughs, environmental wins, acts of kindness, "
         "community achievements, wildlife recoveries, humanitarian milestones.\n"
-        "Preferred outlets (search these specifically): BBC News, The Guardian, Reuters, AP News, "
-        "NPR, New York Times, CBC, The Independent, Good News Network (individual articles only, "
-        "NOT their weekly digest pages).\n"
-        "AVOID: any site whose entire purpose is aggregating 'good news' roundups.\n\n"
+        "Search these outlets: BBC News, The Guardian, Reuters, AP News, NPR, New York Times, "
+        "The Independent, CBC, Positive News (positive.news).\n\n"
         + rules
     )
 
     ai_prompt = (
         f"Today is {today_str}. Search for 4 stories published since {cutoff} about AI "
-        "delivering real, concrete positive impact.\n"
-        "Good topics: a specific medical AI tool used on real patients, an AI system solving "
-        "a climate/energy problem, AI improving accessibility for disabled people, AI helping "
-        "scientists make a confirmed discovery.\n"
-        "Preferred outlets: MIT Technology Review, Wired, Nature, New Scientist, "
-        "Scientific American, NPR, BBC, The Verge, STAT News.\n"
-        "AVOID: opinion pieces, hype articles, product announcements without demonstrated results, "
-        "and anything about AI regulation or AI safety debates.\n\n"
+        "delivering real, demonstrated positive impact.\n"
+        "Topics: AI applied in healthcare, climate, accessibility, education, or science — "
+        "with concrete results, not just announcements.\n"
+        "Search these outlets: MIT Technology Review, Wired, Nature, New Scientist, "
+        "Scientific American, NPR, BBC, The Verge, STAT News.\n\n"
         + rules
     )
 
     ny_prompt = (
-        f"Today is {today_str}. Search for 4 specific news stories from Brooklyn or Manhattan "
+        f"Today is {today_str}. Search for 4 Brooklyn and Manhattan news stories "
         f"published since {cutoff}.\n"
-        "Good topics: a specific community event that already happened, neighborhood art or "
-        "culture (murals, galleries, performances), a skateboarding or sports story with actual "
-        "results (Mets win, Knicks game recap), something happening in Bed-Stuy or Bushwick, "
-        "a new local business or park opening.\n"
-        "Preferred outlets: Gothamist, Brooklyn Paper, Bklyner, Timeout NY, Hyperallergic, "
-        "Curbed NY, NY1, Patch Brooklyn, New York Times City section.\n"
-        "STRICT RULES — reject any article that:\n"
-        "- Lists upcoming events or things to do this weekend\n"
-        "- Is a sports PREVIEW (only recap/result articles allowed)\n"
-        "- Covers NYC in general without a specific Brooklyn/Manhattan neighborhood angle\n"
-        "At most 1 sports story; the other 3 must be community, culture, or neighborhood.\n\n"
+        "Topics: neighborhood culture (Bed-Stuy, Bushwick), street art, skateboarding, "
+        "community events that already happened, sports results (Mets, Yankees, Knicks, Nets), "
+        "local openings or milestones. At most 1 sports story.\n"
+        "Search these outlets: Gothamist, Brooklyn Paper, Bklyner, Timeout NY, Hyperallergic, "
+        "Curbed NY, NY1, New York Times metro section.\n"
+        "Skip events-calendar articles and sports previews (recaps/results only).\n\n"
         + rules
     )
 
