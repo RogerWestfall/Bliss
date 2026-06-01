@@ -2,7 +2,7 @@ name: Bliss Morning Edition
 
 on:
   schedule:
-    - cron: "0 8 * * *"
+    - cron: "0 12 * * *"  # 8:00 AM EDT (UTC-4); runs 9 AM Nov–Mar during EST
   workflow_dispatch:
     inputs:
       preview:
