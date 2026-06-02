@@ -119,7 +119,7 @@ def _search_section(prompt: str) -> str:
         tools=[{
             "type": "web_search_20250305",
             "name": "web_search",
-            "max_uses": 3,
+            "max_uses": 5,
         }],
         messages=[{"role": "user", "content": prompt}],
     )
@@ -198,17 +198,18 @@ def fetch_quote() -> dict:
 # ── News ──────────────────────────────────────────────────────────────────────
 
 _URL_RULES = (
-    "Output ONLY a numbered list of up to 4 article URLs, one per line:\n\n"
+    "Output ONLY a numbered list of 1-4 URLs, one per line:\n\n"
     "1. https://...\n"
     "2. https://...\n"
     "3. https://...\n"
     "4. https://...\n\n"
     "Rules:\n"
-    "- Only articles published in the last 3 days.\n"
+    "- Prefer articles from the last 7 days, but older is fine if very relevant.\n"
     "- Each URL from a different website.\n"
-    "- Full article URLs only — not homepages or section pages.\n"
-    "- No aggregator sites: goodnewsnetwork.org, positive.news, goodgoodgood.co, "
+    "- No aggregator-only sites: goodnewsnetwork.org, positive.news, goodgoodgood.co, "
     "sunnyskyz.com, happiest.media, inspiremore.com, upworthy.com.\n"
+    "- CRITICAL: Always output at least 1 URL. Never explain why you couldn't find "
+    "results — just output the best URLs you found, even if imperfect.\n"
     "- Output the bare URLs only — no titles, no descriptions, no extra text.\n"
 )
 
@@ -262,8 +263,7 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
         "- Hidden histories or fascinating facts about the city\n"
         "- Only-in-New-York moments, characters, or stories\n"
         "- Nostalgic NYC content: things returning, anniversaries, throwbacks\n"
-        "Brooklyn and Manhattan preferred but any NYC borough is fine. "
-        "Only things that already happened — no event previews.\n"
+        "Brooklyn and Manhattan preferred but any NYC borough is fine.\n"
         "Prefer: New York Times, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
         "Curbed NY, Timeout NY, Eater NY, New York Magazine, amNY, Patch NYC.\n\n"
         + _URL_RULES
