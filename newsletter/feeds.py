@@ -214,11 +214,20 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
     today_str = today.strftime("%B %d, %Y")
 
     good_prompt = (
-        f"Today is {today_str}. Search for news stories from the last 3 days that would make "
-        "someone feel genuinely hopeful, proud, or inspired — a scientific discovery, a community "
-        "coming together, an underdog winning, a person beating the odds, the environment "
-        "recovering, an act of generosity, animals thriving, or the world improving in some way.\n"
-        "Prefer: New York Times, Guardian, BBC, NPR, Reuters, AP, The Independent, CNN.\n\n"
+        f"Today is {today_str}. Search for news and stories from the last 3 days with a "
+        "positive, uplifting, or feel-good tone. Cast very broadly — anything qualifies as long "
+        "as it doesn't bring negativity. Examples of what works:\n"
+        "- Good news: breakthroughs, rescues, records broken, problems solved\n"
+        "- Inspiring: underdogs winning, people beating the odds, acts of generosity\n"
+        "- Nostalgic: comebacks, anniversaries, reunions, beloved things returning\n"
+        "- Joyful: animals being cute or thriving, kids doing something amazing, "
+        "unexpected kindness, communities celebrating\n"
+        "- Interesting & uplifting: fascinating discoveries, hidden histories uncovered, "
+        "beautiful places, surprising talents, creative achievements\n"
+        "- Feel-good culture: a beloved show returning, a classic getting recognized, "
+        "an artist having a moment, sports joy\n"
+        "Prefer: New York Times, Guardian, BBC, NPR, Reuters, AP, The Independent, CNN, "
+        "The Atlantic, Smithsonian, National Geographic.\n\n"
         + _URL_RULES
     )
 
