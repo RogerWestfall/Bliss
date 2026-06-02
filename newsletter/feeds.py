@@ -236,24 +236,36 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
     )
 
     ai_prompt = (
-        f"Today is {today_str}. Search for AI technology news stories from the last 3 days "
-        "that would make someone feel excited or hopeful about the future — a new AI tool, "
-        "a research breakthrough, or any development showing AI making life better or "
-        "expanding what's possible.\n"
+        f"Today is {today_str}. Search for AI and technology stories from the last 3 days "
+        "with a positive, exciting, or fascinating angle. Cast broadly — anything qualifies "
+        "as long as it doesn't bring negativity. Examples of what works:\n"
+        "- New AI tools, apps, or products that are impressive or useful\n"
+        "- Research breakthroughs in AI, robotics, or science\n"
+        "- Technology solving real problems or helping people\n"
+        "- Fascinating tech discoveries or unexpected applications\n"
+        "- AI in art, music, creativity, or culture\n"
+        "- Interesting or surprising things AI can now do\n"
+        "- Feel-good tech stories: accessibility, education, healthcare wins\n"
         "Prefer: MIT Technology Review, Wired, Nature, The Verge, STAT News, Ars Technica, "
-        "TechCrunch, New Scientist, NPR, BBC.\n\n"
+        "TechCrunch, New Scientist, NPR, BBC, Scientific American.\n\n"
         + _URL_RULES
     )
 
     ny_prompt = (
-        f"Today is {today_str}. Search for New York City news stories from the last 3 days "
-        "that capture what makes the city feel alive — a neighborhood doing something remarkable, "
-        "a local team or person winning, a new restaurant or venue opening, street art, "
-        "community pride, or anything distinctly New York.\n"
+        f"Today is {today_str}. Search for New York City stories from the last 3 days "
+        "with a positive, uplifting, nostalgic, or feel-good angle. Cast broadly — anything "
+        "qualifies as long as it doesn't bring negativity. Examples of what works:\n"
+        "- Neighborhood life, local openings, community moments\n"
+        "- NYC sports wins or feel-good sports stories\n"
+        "- Street art, murals, culture, music, food\n"
+        "- A beloved NYC institution celebrating a milestone\n"
+        "- Hidden histories or fascinating facts about the city\n"
+        "- Only-in-New-York moments, characters, or stories\n"
+        "- Nostalgic NYC content: things returning, anniversaries, throwbacks\n"
         "Brooklyn and Manhattan preferred but any NYC borough is fine. "
-        "At most 1 sports result. Only things that already happened.\n"
+        "Only things that already happened — no event previews.\n"
         "Prefer: New York Times, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
-        "Curbed NY, Timeout NY, Eater NY, New York Magazine, amNY.\n\n"
+        "Curbed NY, Timeout NY, Eater NY, New York Magazine, amNY, Patch NYC.\n\n"
         + _URL_RULES
     )
 
