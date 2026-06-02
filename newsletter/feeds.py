@@ -26,7 +26,7 @@ def _client() -> anthropic.Anthropic:
     return _client_instance
 
 
-# ── Article metadata ────────────────────────────────────────────────────────────────────
+# ── Article metadata ──────────────────────────────────────────────────────────
 
 def _fetch_meta(url: str) -> dict:
     """Fetch og:title, og:description, og:image from an article URL."""
@@ -79,7 +79,7 @@ def _fetch_meta(url: str) -> dict:
         return {"title": "", "description": "", "image": ""}
 
 
-# ── URL parsing ─────────────────────────────────────────────────────────────────────────
+# ── URL parsing ───────────────────────────────────────────────────────────────
 
 def _parse_urls(text: str) -> list[str]:
     """Extract up to 4 URLs from the model's response."""
@@ -93,6 +93,7 @@ def _parse_urls(text: str) -> list[str]:
         try:
             from urllib.parse import urlparse
             parsed = urlparse(url)
+            # Require a real path (not bare domain)
             if len(parsed.path.rstrip("/")) == 0:
                 continue
             domain = parsed.netloc.removeprefix("www.")
@@ -108,7 +109,7 @@ def _parse_urls(text: str) -> list[str]:
     return urls
 
 
-# ── Search ──────────────────────────────────────────────────────────────────────────────
+# ── Search ────────────────────────────────────────────────────────────────────
 
 def _search_section(prompt: str) -> str:
     """One focused web search call. Returns the model's raw text response."""
@@ -118,7 +119,7 @@ def _search_section(prompt: str) -> str:
         tools=[{
             "type": "web_search_20250305",
             "name": "web_search",
-            "max_uses": 3,
+            "max_uses": 5,
         }],
         messages=[{"role": "user", "content": prompt}],
     )
@@ -142,6 +143,7 @@ def _fetch_section(prompt: str) -> dict | None:
     if not urls:
         return None
 
+    # Fetch metadata for all URLs; find the first with an image for featured
     articles = []
     for url in urls:
         meta = _fetch_meta(url)
@@ -153,10 +155,12 @@ def _fetch_section(prompt: str) -> dict | None:
         })
         logger.info("  %s → title=%r image=%s", url[:60], meta["title"][:50] if meta["title"] else "", bool(meta["image"]))
 
+    # Drop articles where we couldn't get a headline
     articles = [a for a in articles if a["headline"]]
     if not articles:
         return None
 
+    # Pick the first article with an image as featured; fall back to first
     featured_idx = next((i for i, a in enumerate(articles) if a["image"]), 0)
     main = articles[featured_idx]
     rest = [a for i, a in enumerate(articles) if i != featured_idx]
@@ -170,7 +174,7 @@ def _fetch_section(prompt: str) -> dict | None:
     }
 
 
-# ── Quote of the Day ──────────────────────────────────────────────────────────────────────
+# ── Quote of the Day ─────────────────────────────────────────────────────────
 
 _FALLBACK_QUOTE = {
     "quote": "Keep your face always toward the sunshine, and shadows will fall behind you.",
@@ -191,20 +195,21 @@ def fetch_quote() -> dict:
         return _FALLBACK_QUOTE
 
 
-# ── News ────────────────────────────────────────────────────────────────────────────────
+# ── News ──────────────────────────────────────────────────────────────────────
 
 _URL_RULES = (
-    "Output ONLY a numbered list of up to 4 article URLs, one per line:\n\n"
+    "Output ONLY a numbered list of 1-4 URLs, one per line:\n\n"
     "1. https://...\n"
     "2. https://...\n"
     "3. https://...\n"
     "4. https://...\n\n"
     "Rules:\n"
-    "- Only articles published in the last 3 days.\n"
+    "- Prefer articles from the last 7 days, but older is fine if very relevant.\n"
     "- Each URL from a different website.\n"
-    "- Full article URLs only — not homepages or section pages.\n"
-    "- No aggregator sites: goodnewsnetwork.org, positive.news, goodgoodgood.co, "
+    "- No aggregator-only sites: goodnewsnetwork.org, positive.news, goodgoodgood.co, "
     "sunnyskyz.com, happiest.media, inspiremore.com, upworthy.com.\n"
+    "- CRITICAL: Always output at least 1 URL. Never explain why you couldn't find "
+    "results — just output the best URLs you found, even if imperfect.\n"
     "- Output the bare URLs only — no titles, no descriptions, no extra text.\n"
 )
 
@@ -215,7 +220,7 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
 
     good_prompt = (
         f"Today is {today_str}. Search for news and stories from the last 3 days with a "
-        "positive, uplifting, or feel-good tone. Cast very broadly — anything qualifies as long "
+        "positive, uplifting, or feel-good tone. Case very broadly — anything qualifies as long "
         "as it doesn't bring negativity. Examples of what works:\n"
         "- Good news: breakthroughs, rescues, records broken, problems solved\n"
         "- Inspiring: underdogs winning, people beating the odds, acts of generosity\n"
@@ -258,8 +263,7 @@ def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
         "- Hidden histories or fascinating facts about the city\n"
         "- Only-in-New-York moments, characters, or stories\n"
         "- Nostalgic NYC content: things returning, anniversaries, throwbacks\n"
-        "Brooklyn and Manhattan preferred but any NYC borough is fine. "
-        "Only things that already happened — no event previews.\n"
+        "Brooklyn and Manhattan preferred but any NYC borough is fine.\n"
         "Prefer: New York Times, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
         "Curbed NY, Timeout NY, Eater NY, New York Magazine, amNY, Patch NYC.\n\n"
         + _URL_RULES
