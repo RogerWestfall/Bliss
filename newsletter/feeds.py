@@ -1,4 +1,4 @@
-"""Fetch newsletter content via Claude web search + Python story extraction."""
+"""Fetch newsletter content via Claude web search + article metadata extraction."""
 
 import logging
 import re
@@ -16,7 +16,7 @@ _HEADERS = {"User-Agent": "BlissNewsletter/2.0 (rogerlwestfall@gmail.com)"}
 _MODEL = "claude-haiku-4-5-20251001"
 _client_instance = None
 
-_URL_RE = re.compile(r'https?://[^\s\|<>"()\[\]{}]+')
+_URL_RE = re.compile(r'https?://[^\s<>"()\[\]{}]+')
 
 
 def _client() -> anthropic.Anthropic:
@@ -26,71 +26,42 @@ def _client() -> anthropic.Anthropic:
     return _client_instance
 
 
-def _parse_section_digest(text: str) -> list[dict]:
-    """Extract up to 4 stories from a section digest.
+# ── Article metadata ──────────────────────────────────────────────────────────
 
-    Handles formats the search model might use:
-      Labeled:  1. HEADLINE: ...\\n   URL: https://...\\n   BLURB: ...
-      Pipe:     1. Headline | https://... | date
-      Inline:   1. **Headline** - https://...
-      Colon:    1: Headline\\n   URL: https://...
-    """
-    stories = []
-    blocks = re.split(r'\n(?=\s*[1-4][.):\s])', '\n' + text.strip())
-
-    for block in blocks:
-        block = block.strip()
-        if not re.match(r'[1-4][.):\s]', block):
-            continue
-
-        url = ""
-        url_label = re.search(r'\bURL:\s*(https?://\S+)', block, re.IGNORECASE)
-        if url_label:
-            url = url_label.group(1).rstrip('.,;)')
-        else:
-            url_m = _URL_RE.search(block)
-            if url_m:
-                url = url_m.group(0).rstrip('.,;)')
-
-        if not url:
-            continue
-
-        headline = ""
-        h_label = re.search(r'HEADLINE:\s*(.+?)(?:\n|$)', block, re.IGNORECASE)
-        if h_label:
-            headline = h_label.group(1).strip()
-        else:
-            before_url = block[:block.index(url)].strip()
-            before_url = re.sub(r'^[1-4][.):\s]\s*', '', before_url)
-            headline = before_url.split('|')[0].strip().rstrip(':')
-
-        headline = re.sub(r'\*+', '', headline).strip()
-        if not headline or len(headline) < 5:
-            continue
-
-        blurb = ""
-        b_m = re.search(
-            r'BLURB:\s*(.+?)(?=\n\s*[1-4][.)]|\Z)',
-            block, re.IGNORECASE | re.DOTALL,
-        )
-        if b_m:
-            blurb = b_m.group(1).strip()
-
-        story: dict = {"headline": headline, "link": url}
-        if blurb:
-            story["blurb"] = blurb
-        stories.append(story)
-
-    return stories[:4]
-
-
-def _og_image(url: str) -> str:
-    if not url:
-        return ""
+def _fetch_meta(url: str) -> dict:
+    """Fetch og:title, og:description, og:image from an article URL."""
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=10)
         resp.raise_for_status()
         root = lhtml.fromstring(resp.content)
+
+        title = ""
+        for xpath, attr in [
+            ('.//meta[@property="og:title"]', "content"),
+            ('.//meta[@name="twitter:title"]', "content"),
+        ]:
+            el = root.find(xpath)
+            if el is not None:
+                title = el.get(attr, "").strip()
+                if title:
+                    break
+        if not title:
+            el = root.find('.//title')
+            if el is not None and el.text:
+                title = el.text.strip()
+
+        description = ""
+        for xpath, attr in [
+            ('.//meta[@property="og:description"]', "content"),
+            ('.//meta[@name="description"]', "content"),
+        ]:
+            el = root.find(xpath)
+            if el is not None:
+                description = el.get(attr, "").strip()
+                if description:
+                    break
+
+        image = ""
         for xpath, attr in [
             ('.//meta[@property="og:image"]', "content"),
             ('.//meta[@name="twitter:image"]', "content"),
@@ -99,74 +70,52 @@ def _og_image(url: str) -> str:
             if el is not None:
                 src = el.get(attr, "")
                 if src.startswith("http"):
-                    return src
+                    image = src
+                    break
+
+        return {"title": title, "description": description, "image": image}
     except Exception as exc:
-        logger.debug("og:image failed for %s: %s", url, exc)
-    return ""
+        logger.debug("fetch_meta failed for %s: %s", url, exc)
+        return {"title": "", "description": "", "image": ""}
 
 
-def _is_article_url(url: str) -> bool:
-    """Reject bare domains — require at least some path beyond '/'."""
-    if not url or not url.startswith("http"):
-        return False
-    from urllib.parse import urlparse
-    return len(urlparse(url).path.rstrip("/")) > 0
+# ── URL parsing ───────────────────────────────────────────────────────────────
 
+def _parse_urls(text: str) -> list[str]:
+    """Extract up to 4 URLs from the model's response."""
+    urls = []
+    seen_domains: set = set()
 
-def _dedup_by_domain(stories: list) -> list:
-    seen: set = set()
-    out = []
-    for s in stories:
-        url = s.get("link", "")
+    for url in _URL_RE.findall(text):
+        url = url.rstrip('.,;)')
+        if not url.startswith("http"):
+            continue
         try:
             from urllib.parse import urlparse
-            domain = urlparse(url).netloc.removeprefix("www.")
+            parsed = urlparse(url)
+            # Require a real path (not bare domain)
+            if len(parsed.path.rstrip("/")) == 0:
+                continue
+            domain = parsed.netloc.removeprefix("www.")
+            if domain in seen_domains:
+                continue
+            seen_domains.add(domain)
+            urls.append(url)
         except Exception:
-            domain = url
-        if domain and domain not in seen:
-            seen.add(domain)
-            out.append(s)
-        elif not domain:
-            out.append(s)
-    return out
-
-
-def _shape_stories(stories: list) -> dict | None:
-    stories = [s for s in stories if _is_article_url(s.get("link", ""))]
-    stories = _dedup_by_domain(stories)
-    if not stories:
-        return None
-
-    # Use story #1 as featured; try each story's URL for an og:image
-    featured_image = ""
-    featured_idx = 0
-    for i, s in enumerate(stories):
-        img = _og_image(s.get("link", ""))
-        if img:
-            featured_image = img
-            featured_idx = i
+            continue
+        if len(urls) == 4:
             break
 
-    main = stories[featured_idx]
-    rest = [s for i, s in enumerate(stories) if i != featured_idx]
+    return urls
 
-    return {
-        "headline": main.get("headline", ""),
-        "blurb": main.get("blurb", ""),
-        "link": main.get("link", ""),
-        "image": featured_image,
-        "more": [
-            {"headline": s.get("headline", ""), "link": s.get("link", "")}
-            for s in rest
-        ],
-    }
 
+# ── Search ────────────────────────────────────────────────────────────────────
 
 def _search_section(prompt: str) -> str:
-    """One focused web search call for one newsletter section. Returns prose."""
+    """One focused web search call. Returns the model's raw text response."""
     resp = _client().messages.create(
         model=_MODEL,
-        max_tokens=2000,
+        max_tokens=1000,
         tools=[{
             "type": "web_search_20250305",
             "name": "web_search",
@@ -181,8 +130,48 @@ def _search_section(prompt: str) -> str:
         for b in resp.content
         if getattr(b, "type", "") == "text"
     )
-    logger.info("Digest (%d chars): %s...", len(text), text[:200])
+    logger.info("Response (%d chars): %s", len(text), text[:500])
     return text
+
+
+def _fetch_section(prompt: str) -> dict | None:
+    """Search for stories, parse URLs, fetch metadata, return shaped section."""
+    text = _search_section(prompt)
+    urls = _parse_urls(text)
+    logger.info("URLs found: %s", urls)
+
+    if not urls:
+        return None
+
+    # Fetch metadata for all URLs; find the first with an image for featured
+    articles = []
+    for url in urls:
+        meta = _fetch_meta(url)
+        articles.append({
+            "headline": meta["title"],
+            "blurb": meta["description"],
+            "link": url,
+            "image": meta["image"],
+        })
+        logger.info("  %s → title=%r image=%s", url[:60], meta["title"][:50] if meta["title"] else "", bool(meta["image"]))
+
+    # Drop articles where we couldn't get a headline
+    articles = [a for a in articles if a["headline"]]
+    if not articles:
+        return None
+
+    # Pick the first article with an image as featured; fall back to first
+    featured_idx = next((i for i, a in enumerate(articles) if a["image"]), 0)
+    main = articles[featured_idx]
+    rest = [a for i, a in enumerate(articles) if i != featured_idx]
+
+    return {
+        "headline": main["headline"],
+        "blurb": main["blurb"],
+        "link": main["link"],
+        "image": main["image"],
+        "more": [{"headline": a["headline"], "link": a["link"]} for a in rest],
+    }
 
 
 # ── Quote of the Day ─────────────────────────────────────────────────────────
@@ -208,99 +197,66 @@ def fetch_quote() -> dict:
 
 # ── News ──────────────────────────────────────────────────────────────────────
 
-_SECTION_RULES = (
-    "Find up to 4 stories from the last 3 days and output them in this exact format:\n\n"
-    "1. HEADLINE: [article headline]\n"
-    "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n"
-    "   BLURB: [warm 2-3 sentence description]\n\n"
-    "2. HEADLINE: [article headline]\n"
-    "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n\n"
-    "3. HEADLINE: [article headline]\n"
-    "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n\n"
-    "4. HEADLINE: [article headline]\n"
-    "   URL: [https://full-article-url]\n"
-    "   DATE: [publication date]\n\n"
+_URL_RULES = (
+    "Output ONLY a numbered list of up to 4 article URLs, one per line:\n\n"
+    "1. https://...\n"
+    "2. https://...\n"
+    "3. https://...\n"
+    "4. https://...\n\n"
     "Rules:\n"
-    "- Only include articles from the last 3 days. Prefer the most recent.\n"
-    "- Each story must be a specific, standalone article — NOT a roundup, digest, "
-    "or aggregator post listing multiple stories.\n"
-    "- Each story from a different website.\n"
-    "- Prefer established outlets (New York Times, Guardian, BBC, NPR, Reuters, AP, Wired, Nature) "
-    "but any credible source is fine.\n"
-    "- Output only what you find — do not pad with older or off-topic stories.\n"
-    "- Every URL must start with https:// and link directly to the article.\n"
+    "- Only articles published in the last 3 days.\n"
+    "- Each URL from a different website.\n"
+    "- Full article URLs only — not homepages or section pages.\n"
+    "- No aggregator sites: goodnewsnetwork.org, positive.news, goodgoodgood.co, "
+    "sunnyskyz.com, happiest.media, inspiremore.com, upworthy.com.\n"
+    "- Output the bare URLs only — no titles, no descriptions, no extra text.\n"
 )
 
 
 def fetch_news() -> tuple[dict | None, dict | None, dict | None]:
-    """Three focused search calls; returns None for any section with no recent stories."""
     today = date.today()
     today_str = today.strftime("%B %d, %Y")
 
     good_prompt = (
-        f"Today is {today_str}. Find news stories from the last 3 days that would make someone "
-        "feel genuinely hopeful, proud, or inspired when they read them over morning coffee.\n"
-        "The story could be about anything — a scientific discovery, a community coming together, "
-        "an underdog winning, a person beating the odds, the environment recovering, an act of "
-        "generosity, a long-overdue milestone, animals thriving, or the world measurably improving "
-        "in some way. Any topic qualifies as long as the emotional tone is genuinely uplifting.\n"
-        "Prefer established news outlets: New York Times, Guardian, BBC, NPR, Reuters, AP, The Independent, CNN, NBC.\n"
-        "Skip aggregator sites that collect positive stories from other sources: "
-        "goodnewsnetwork.org, positive.news, goodgoodgood.co, sunnyskyz.com, happiest.media, "
-        "inspiremore.com, upworthy.com, good.is — these repackage stories, they don't report them.\n\n"
-        + _SECTION_RULES
+        f"Today is {today_str}. Search for news stories from the last 3 days that would make "
+        "someone feel genuinely hopeful, proud, or inspired — a scientific discovery, a community "
+        "coming together, an underdog winning, a person beating the odds, the environment "
+        "recovering, an act of generosity, animals thriving, or the world improving in some way.\n"
+        "Prefer: New York Times, Guardian, BBC, NPR, Reuters, AP, The Independent, CNN.\n\n"
+        + _URL_RULES
     )
 
     ai_prompt = (
-        f"Today is {today_str}. Find AI technology news stories from the last 3 days "
-        "that would make someone feel excited or hopeful about the future.\n"
-        "Could be a new AI tool, a research breakthrough, a real-world application, "
-        "or any development that shows AI making life better or expanding what's possible. "
-        "New product launches are fine if the capability itself is impressive or beneficial.\n"
-        "Prefer: MIT Technology Review, Wired, Nature, New Scientist, The Verge, STAT News, "
-        "Ars Technica, TechCrunch, NPR, BBC.\n\n"
-        + _SECTION_RULES
+        f"Today is {today_str}. Search for AI technology news stories from the last 3 days "
+        "that would make someone feel excited or hopeful about the future — a new AI tool, "
+        "a research breakthrough, or any development showing AI making life better or "
+        "expanding what's possible.\n"
+        "Prefer: MIT Technology Review, Wired, Nature, The Verge, STAT News, Ars Technica, "
+        "TechCrunch, New Scientist, NPR, BBC.\n\n"
+        + _URL_RULES
     )
 
     ny_prompt = (
-        f"Today is {today_str}. Find New York City news stories from the last 3 days "
-        "that capture what makes the city feel alive and worth loving.\n"
-        "Could be a neighborhood doing something remarkable, a local team or person winning, "
-        "a new restaurant or venue opening that people are excited about, street art or culture, "
-        "community pride, or anything distinctly New York. "
+        f"Today is {today_str}. Search for New York City news stories from the last 3 days "
+        "that capture what makes the city feel alive — a neighborhood doing something remarkable, "
+        "a local team or person winning, a new restaurant or venue opening, street art, "
+        "community pride, or anything distinctly New York.\n"
         "Brooklyn and Manhattan preferred but any NYC borough is fine. "
-        "At most 1 sports result. Only things that already happened — no event previews.\n"
-        "Search broadly across NYC outlets: New York Times, Gothamist, Brooklyn Paper, "
-        "Bklyner, Hyperallergic, Curbed NY, Timeout NY, amNY, NY1, Eater NY, "
-        "New York Magazine, Patch NYC.\n\n"
-        + _SECTION_RULES
+        "At most 1 sports result. Only things that already happened.\n"
+        "Prefer: New York Times, Gothamist, Brooklyn Paper, Bklyner, Hyperallergic, "
+        "Curbed NY, Timeout NY, Eater NY, New York Magazine, amNY.\n\n"
+        + _URL_RULES
     )
 
     try:
         logger.info("Searching: Good News...")
-        good_digest = _search_section(good_prompt)
-        good_stories = _parse_section_digest(good_digest)
-        logger.info("Good News: %d parsed; links=%s",
-                    len(good_stories), [s.get("link", "")[:70] for s in good_stories])
+        good_news = _fetch_section(good_prompt)
 
         logger.info("Searching: AI Impact...")
-        ai_digest = _search_section(ai_prompt)
-        ai_stories = _parse_section_digest(ai_digest)
-        logger.info("AI Impact: %d parsed; links=%s",
-                    len(ai_stories), [s.get("link", "")[:70] for s in ai_stories])
+        ai_impact = _fetch_section(ai_prompt)
 
         logger.info("Searching: New York...")
-        ny_digest = _search_section(ny_prompt)
-        ny_stories = _parse_section_digest(ny_digest)
-        logger.info("New York: %d parsed; links=%s",
-                    len(ny_stories), [s.get("link", "")[:70] for s in ny_stories])
-
-        good_news = _shape_stories(good_stories)
-        ai_impact = _shape_stories(ai_stories)
-        ny_news = _shape_stories(ny_stories)
+        ny_news = _fetch_section(ny_prompt)
 
         logger.info("Sections — good: %s | ai: %s | ny: %s",
                     good_news["headline"][:50] if good_news else "OMITTED",
